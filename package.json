@@ -1,0 +1,44 @@
+{
+  "name": "stellaris-mcp",
+  "version": "2.0.0",
+  "description": "MCP server for semantic code search + AST symbol exploration — supports TS, JS, Python, Go, Rust, PHP, HTML, CSS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GDM-Pixel/stellaris-mcp"
+  },
+  "keywords": ["mcp", "code-search", "semantic-search", "tree-sitter", "ast", "embeddings", "lancedb"],
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "stellaris-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "watch": "tsc --watch"
+  },
+  "dependencies": {
+    "@lancedb/lancedb": "^0.13.0",
+    "@modelcontextprotocol/sdk": "^1.11.3",
+    "apache-arrow": "^17.0.0",
+    "dotenv": "^17.3.1",
+    "fast-glob": "^3.3.3",
+    "ignore": "^7.0.3",
+    "openai": "^4.78.0",
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-css": "^0.23.2",
+    "tree-sitter-go": "^0.23.4",
+    "tree-sitter-html": "^0.23.2",
+    "tree-sitter-php": "^0.23.12",
+    "tree-sitter-python": "^0.23.6",
+    "tree-sitter-rust": "^0.23.3",
+    "tree-sitter-typescript": "^0.23.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
