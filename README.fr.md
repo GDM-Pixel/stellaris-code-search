@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.jpeg" alt="Stellaris MCP" width="100%" />
+</p>
+
 # Stellaris MCP
 
 > [English version](README.md)
