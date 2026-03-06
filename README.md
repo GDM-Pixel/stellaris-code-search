@@ -151,6 +151,18 @@ You can toggle this via the `reindex` tool (`enable_auto_index: false`) or edit 
 
 Same syntax as `.gitignore`, to exclude files from indexing.
 
+## Security
+
+Stellaris **never indexes sensitive files**. Two layers of protection ensure secrets are never sent to OpenAI:
+
+1. **Glob exclusions** (`DEFAULT_EXCLUDE`) — files matching these patterns are never scanned:
+   - `.env*`, `secrets.*`, `credentials.*`
+   - `*.pem`, `*.key`, `*.cert`, `*.p12`, `*.pfx`, `*.keystore`
+
+2. **Ignore filter** (defense in depth) — same patterns applied via the `ignore` library during file scanning, as a second safety net.
+
+Additionally, `.gitignore` and `.vectorignore` rules are always respected.
+
 ## Claude Desktop integration
 
 Add to your `claude_desktop_config.json`:

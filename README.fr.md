@@ -151,6 +151,18 @@ Vous pouvez basculer cette option via l'outil `reindex` (`enable_auto_index: fal
 
 Meme syntaxe que `.gitignore`, pour exclure des fichiers de l'indexation.
 
+## Securite
+
+Stellaris **n'indexe jamais les fichiers sensibles**. Deux couches de protection empechent l'envoi de secrets a OpenAI :
+
+1. **Exclusions glob** (`DEFAULT_EXCLUDE`) — ces patterns ne sont jamais scannes :
+   - `.env*`, `secrets.*`, `credentials.*`
+   - `*.pem`, `*.key`, `*.cert`, `*.p12`, `*.pfx`, `*.keystore`
+
+2. **Filtre ignore** (defense en profondeur) — memes patterns appliques via la librairie `ignore` pendant le scan, comme second filet de securite.
+
+De plus, les regles `.gitignore` et `.vectorignore` sont toujours respectees.
+
 ## Integration Claude Desktop
 
 ```json
