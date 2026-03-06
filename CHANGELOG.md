@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.2.0] - 2026-03-06
+
+### Added
+- **13 new file extensions** for indexing: `.astro`, `.vue`, `.svelte`, `.scss`, `.less`, `.json`, `.yaml`, `.yml`, `.sql`, `.graphql`, `.gql`, `.prisma`, `.toml`
+- Full coverage of modern web frameworks (Astro, Vue, Svelte) and common config/data formats
+
+### Changed
+- `SUPPORTED_EXTENSIONS.code` expanded from 10 to 23 extensions
+
 ## [2.1.0] - 2026-03-05
 
 ### Added

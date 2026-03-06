@@ -27,7 +27,7 @@ export const DEFAULT_EXCLUDE = [
 ];
 
 export const SUPPORTED_EXTENSIONS = {
-  code: ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.php', '.html', '.css'],
+  code: ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.php', '.html', '.css', '.astro', '.vue', '.svelte', '.scss', '.less', '.json', '.yaml', '.yml', '.sql', '.graphql', '.gql', '.prisma', '.toml'],
   docs: ['.md', '.mdx'],
 } as const;
 

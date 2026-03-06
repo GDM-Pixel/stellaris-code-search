@@ -1,7 +1,7 @@
 {
   "name": "stellaris-mcp",
-  "version": "2.0.0",
-  "description": "MCP server for semantic code search + AST symbol exploration — supports TS, JS, Python, Go, Rust, PHP, HTML, CSS",
+  "version": "2.2.0",
+  "description": "MCP server for semantic code search + AST symbol exploration — supports TS, JS, Python, Go, Rust, PHP, HTML, CSS, Astro, Vue, Svelte, SCSS, SQL, and more",
   "license": "MIT",
   "repository": {
     "type": "git",
