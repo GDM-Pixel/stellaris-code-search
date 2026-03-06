@@ -51,6 +51,9 @@ async function buildIgnoreFilter(projectRoot: string): Promise<Ignore> {
   // Always ignore these
   ig.add(['node_modules', '.git', '.vectors', '.stellarisrc', 'dist']);
 
+  // Security: never index sensitive files (defense in depth)
+  ig.add(['.env*', 'secrets.*', 'credentials.*', '*.pem', '*.key', '*.cert', '*.p12', '*.pfx', '*.keystore']);
+
   return ig;
 }
 

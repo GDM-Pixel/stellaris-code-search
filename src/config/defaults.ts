@@ -24,6 +24,16 @@ export const DEFAULT_EXCLUDE = [
   '**/package-lock.json',
   '**/yarn.lock',
   '**/pnpm-lock.yaml',
+  // Security: never index sensitive files
+  '**/.env*',
+  '**/secrets.*',
+  '**/credentials.*',
+  '**/*.pem',
+  '**/*.key',
+  '**/*.cert',
+  '**/*.p12',
+  '**/*.pfx',
+  '**/*.keystore',
 ];
 
 export const SUPPORTED_EXTENSIONS = {
