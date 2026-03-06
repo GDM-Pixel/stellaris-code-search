@@ -5,6 +5,7 @@ import { searchByVector, hasIndex } from '../store/lancedb.js';
 export async function handleSearchCode(args: Record<string, unknown>) {
   const query = args.query as string;
   const limit = (args.limit as number) ?? 10;
+  const extensions = args.extensions as string[] | undefined;
 
   if (!query || typeof query !== 'string') {
     return {
@@ -33,9 +34,18 @@ export async function handleSearchCode(args: Record<string, unknown>) {
   // Embed the query
   const queryVector = await embedText(query);
 
-  // Search in code chunks only
+  // Search in code chunks only, with optional extension filter
+  // Over-fetch when filtering by extension (results are filtered post-query)
+  const fetchLimit = extensions ? limit * 3 : limit;
   const filter = `chunk_type != 'doc_section'`;
-  const results = await searchByVector(projectRoot, queryVector, limit, filter);
+  let results = await searchByVector(projectRoot, queryVector, fetchLimit, filter);
+
+  if (extensions && extensions.length > 0) {
+    const normalizedExts = extensions.map(e => e.startsWith('.') ? e : `.${e}`);
+    results = results
+      .filter(r => normalizedExts.some(ext => r.file_path.endsWith(ext)))
+      .slice(0, limit);
+  }
 
   const formatted = results.map((r, i) => ({
     rank: i + 1,

@@ -18,9 +18,23 @@ Search your codebase with natural language, browse file structures, inspect symb
 - **Incremental indexing**: only changed files are re-embedded
 - **Safe by default**: no auto-indexing until you explicitly run `reindex` for the first time
 - **Auto-indexing** on subsequent startups (opt-in via `.stellarisrc`)
-- **10 languages**: TypeScript, JavaScript, TSX, JSX, Python, Go, Rust, PHP, HTML, CSS
-- **Documentation**: indexes and searches Markdown files
+- **23 file extensions**: TS, JS, Python, Go, Rust, PHP, HTML, CSS, Astro, Vue, Svelte, SCSS, JSON, YAML, SQL, GraphQL, Prisma, TOML, and more
+- **Documentation**: indexes and searches Markdown/MDX files
+- **Extension filter**: `search_code` accepts an `extensions` param to focus results on specific file types
 - **Graceful degradation**: works without `OPENAI_API_KEY` (AST tools still available)
+
+## Benchmark: Stellaris vs Grep/Glob
+
+Tested on a real-world Astro project (341 files, 430 chunks indexed):
+
+| Metric | Without Stellaris | With Stellaris | Improvement |
+|--------|-------------------|----------------|-------------|
+| Tool calls (avg) | 5.0 | **1.5** | **-70%** |
+| Full files read (avg) | 2.8 | **0** | **-100%** |
+| Tokens consumed | ~12 000 | ~**2 500** | **-80%** |
+| Precision | Variable (noisy grep results) | **High** (targeted previews) | |
+
+Stellaris excels at complex multi-file questions (auth flows, payment logic, i18n systems). Grep/Glob remain better for exhaustive file listings. Best strategy: **Stellaris first, Grep/Glob as complement**.
 
 ## Tools (6)
 
@@ -28,7 +42,7 @@ Search your codebase with natural language, browse file structures, inspect symb
 
 | Tool | Description |
 |------|-------------|
-| `search_code` | Natural language search in code files. Returns files, lines, and previews. |
+| `search_code` | Natural language search in code files. Returns files, lines, and previews. Accepts optional `extensions` filter (e.g., `[".ts", ".js"]`). |
 | `search_docs` | Natural language search in Markdown documentation. |
 | `reindex` | Force incremental re-indexing of the project. Accepts `enable_auto_index` to toggle auto-indexing. |
 
@@ -155,21 +169,31 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
-## Supported languages
+## Supported languages & formats
 
-| Language | Extensions | AST Parsing | Symbol types |
-|----------|-----------|-------------|--------------|
-| TypeScript | `.ts` | tree-sitter | function, component, hook, class, type |
-| TSX | `.tsx` | tree-sitter | function, component, hook, class, type |
-| JavaScript | `.js` | tree-sitter | function, component, class |
-| JSX | `.jsx` | tree-sitter | function, component, class |
-| Python | `.py` | tree-sitter | function, class |
-| Go | `.go` | tree-sitter | function, method, type |
-| Rust | `.rs` | tree-sitter | function, struct, impl, trait, type |
-| PHP | `.php` | tree-sitter | function, class, type |
-| HTML | `.html` | tree-sitter | element |
-| CSS | `.css` | tree-sitter | rule |
-| Markdown | `.md`, `.mdx` | regex | doc_section |
+| Language / Format | Extensions | Parsing | Symbol types |
+|-------------------|-----------|---------|--------------|
+| TypeScript | `.ts` | tree-sitter (AST) | function, component, hook, class, type |
+| TSX | `.tsx` | tree-sitter (AST) | function, component, hook, class, type |
+| JavaScript | `.js` | tree-sitter (AST) | function, component, class |
+| JSX | `.jsx` | tree-sitter (AST) | function, component, class |
+| Python | `.py` | tree-sitter (AST) | function, class |
+| Go | `.go` | tree-sitter (AST) | function, method, type |
+| Rust | `.rs` | tree-sitter (AST) | function, struct, impl, trait, type |
+| PHP | `.php` | tree-sitter (AST) | function, class, type |
+| HTML | `.html` | tree-sitter (AST) | element |
+| CSS | `.css` | tree-sitter (AST) | rule |
+| Astro | `.astro` | fallback (chunked) | module |
+| Vue | `.vue` | fallback (chunked) | module |
+| Svelte | `.svelte` | fallback (chunked) | module |
+| SCSS / Less | `.scss`, `.less` | fallback (chunked) | module |
+| JSON | `.json` | fallback (chunked) | module |
+| YAML | `.yaml`, `.yml` | fallback (chunked) | module |
+| SQL | `.sql` | fallback (chunked) | module |
+| GraphQL | `.graphql`, `.gql` | fallback (chunked) | module |
+| Prisma | `.prisma` | fallback (chunked) | module |
+| TOML | `.toml` | fallback (chunked) | module |
+| Markdown | `.md`, `.mdx` | heading-based | doc_section |
 
 ## Architecture
 

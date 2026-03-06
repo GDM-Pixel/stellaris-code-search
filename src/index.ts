@@ -25,7 +25,7 @@ if (!process.env.OPENAI_API_KEY) {
 const server = new Server(
   {
     name: 'stellaris-mcp',
-    version: '2.0.0',
+    version: '2.3.0',
   },
   {
     capabilities: {
@@ -50,6 +50,11 @@ const TOOLS = [
         limit: {
           type: 'number',
           description: 'Maximum number of results to return (default: 10)',
+        },
+        extensions: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter results by file extensions (e.g., [".ts", ".js"]). Only returns results from files matching these extensions. Useful to exclude content files (JSON, YAML) when searching for code logic.',
         },
       },
       required: ['query'],

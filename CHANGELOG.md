@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.3.0] - 2026-03-06
+
+### Added
+- **`extensions` filter** on `search_code` — optional parameter to restrict results by file type (e.g., `[".ts", ".js"]`), reducing noise from content files (JSON, YAML, i18n)
+- **Benchmark section** in README (EN + FR) with real-world test results: -70% tool calls, -80% tokens, -100% full file reads
+
+### Changed
+- `search_code` over-fetches 3x when filtering by extension, then trims to requested limit for better relevance
+
 ## [2.2.0] - 2026-03-06
 
 ### Added

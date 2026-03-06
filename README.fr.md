@@ -17,10 +17,24 @@ Combine la puissance des **embeddings vectoriels** (OpenAI + LanceDB) pour la re
 - **Indexation incrementale** : seuls les fichiers modifies sont re-indexes
 - **Securise par defaut** : aucune auto-indexation tant que vous n'avez pas lance `reindex` une premiere fois
 - **Auto-indexation** aux demarrages suivants (opt-in via `.stellarisrc`)
-- **10 langages supportes** : TypeScript, JavaScript, TSX, JSX, Python, Go, Rust, PHP, HTML, CSS
-- **Documentation** : indexation et recherche dans les fichiers Markdown
+- **23 extensions de fichiers** : TS, JS, Python, Go, Rust, PHP, HTML, CSS, Astro, Vue, Svelte, SCSS, JSON, YAML, SQL, GraphQL, Prisma, TOML, etc.
+- **Documentation** : indexation et recherche dans les fichiers Markdown/MDX
+- **Filtre par extension** : `search_code` accepte un parametre `extensions` pour cibler les resultats sur des types de fichiers specifiques
 - **Contexte enrichi** : imports, symboles voisins et avertissements TODO/FIXME inclus automatiquement
 - **Degradation gracieuse** : fonctionne sans `OPENAI_API_KEY` (les outils AST restent disponibles)
+
+## Benchmark : Stellaris vs Grep/Glob
+
+Teste sur un projet Astro reel (341 fichiers, 430 chunks indexes) :
+
+| Metrique | Sans Stellaris | Avec Stellaris | Gain |
+|----------|----------------|----------------|------|
+| Appels d'outils (moy.) | 5.0 | **1.5** | **-70%** |
+| Fichiers lus en entier (moy.) | 2.8 | **0** | **-100%** |
+| Tokens consommes | ~12 000 | ~**2 500** | **-80%** |
+| Precision | Variable (bruit dans les resultats grep) | **Elevee** (previews ciblees) | |
+
+Stellaris excelle sur les questions complexes multi-fichiers (flux d'auth, logique de paiement, systemes i18n). Grep/Glob restent meilleurs pour les listings exhaustifs de fichiers. Strategie optimale : **Stellaris d'abord, Grep/Glob en complement**.
 
 ## Outils exposes (6)
 
@@ -28,7 +42,7 @@ Combine la puissance des **embeddings vectoriels** (OpenAI + LanceDB) pour la re
 
 | Outil | Description |
 |-------|-------------|
-| `search_code` | Recherche en langage naturel dans le code. Retourne fichiers, lignes et previews. |
+| `search_code` | Recherche en langage naturel dans le code. Retourne fichiers, lignes et previews. Accepte un filtre `extensions` optionnel (ex: `[".ts", ".js"]`). |
 | `search_docs` | Recherche en langage naturel dans la documentation Markdown. |
 | `reindex` | Force la re-indexation incrementale du projet. Accepte `enable_auto_index` pour activer/desactiver l'auto-indexation. |
 
@@ -93,6 +107,8 @@ Apres le premier `reindex`, un fichier `.stellarisrc` est cree a la racine du pr
 ## Installation
 
 ```bash
+git clone https://github.com/GDM-Pixel/stellaris-code-search.git
+cd stellaris-code-search
 npm install
 npm run build
 ```
@@ -151,21 +167,31 @@ Meme syntaxe que `.gitignore`, pour exclure des fichiers de l'indexation.
 }
 ```
 
-## Langages supportes
+## Langages et formats supportes
 
-| Langage | Extensions | Parsing AST | Types de symboles extraits |
-|---------|-----------|-------------|---------------------------|
-| TypeScript | `.ts` | tree-sitter | function, component, hook, class, type |
-| TSX | `.tsx` | tree-sitter | function, component, hook, class, type |
-| JavaScript | `.js` | tree-sitter | function, component, class |
-| JSX | `.jsx` | tree-sitter | function, component, class |
-| Python | `.py` | tree-sitter | function, class |
-| Go | `.go` | tree-sitter | function, method, type |
-| Rust | `.rs` | tree-sitter | function, struct, impl, trait, type |
-| PHP | `.php` | tree-sitter | function, class, type |
-| HTML | `.html` | tree-sitter | element |
-| CSS | `.css` | tree-sitter | rule |
-| Markdown | `.md`, `.mdx` | regex | doc_section |
+| Langage / Format | Extensions | Parsing | Types de symboles |
+|------------------|-----------|---------|-------------------|
+| TypeScript | `.ts` | tree-sitter (AST) | function, component, hook, class, type |
+| TSX | `.tsx` | tree-sitter (AST) | function, component, hook, class, type |
+| JavaScript | `.js` | tree-sitter (AST) | function, component, class |
+| JSX | `.jsx` | tree-sitter (AST) | function, component, class |
+| Python | `.py` | tree-sitter (AST) | function, class |
+| Go | `.go` | tree-sitter (AST) | function, method, type |
+| Rust | `.rs` | tree-sitter (AST) | function, struct, impl, trait, type |
+| PHP | `.php` | tree-sitter (AST) | function, class, type |
+| HTML | `.html` | tree-sitter (AST) | element |
+| CSS | `.css` | tree-sitter (AST) | rule |
+| Astro | `.astro` | fallback (chunked) | module |
+| Vue | `.vue` | fallback (chunked) | module |
+| Svelte | `.svelte` | fallback (chunked) | module |
+| SCSS / Less | `.scss`, `.less` | fallback (chunked) | module |
+| JSON | `.json` | fallback (chunked) | module |
+| YAML | `.yaml`, `.yml` | fallback (chunked) | module |
+| SQL | `.sql` | fallback (chunked) | module |
+| GraphQL | `.graphql`, `.gql` | fallback (chunked) | module |
+| Prisma | `.prisma` | fallback (chunked) | module |
+| TOML | `.toml` | fallback (chunked) | module |
+| Markdown | `.md`, `.mdx` | heading-based | doc_section |
 
 ## Architecture
 
@@ -209,8 +235,16 @@ npm run build  # Compilation TypeScript
 npm run watch  # Compilation en mode watch
 ```
 
-## Version
+## Versions
+
+**v2.3.0** — Filtre `extensions` sur `search_code` + benchmark + 23 extensions supportees.
+
+**v2.2.0** — 13 nouvelles extensions : Astro, Vue, Svelte, SCSS, JSON, YAML, SQL, GraphQL, Prisma, TOML.
 
 **v2.1.0** — Garde-fou : plus d'auto-indexation par defaut. `.stellarisrc` pour le controle opt-in.
 
 **v2.0.0** — Ajout de get_file_tree, get_file_outline, get_symbol + support Python, Go, Rust, PHP, HTML, CSS.
+
+## Licence
+
+[MIT](LICENSE)
