@@ -94,7 +94,9 @@ export async function deleteChunksByFile(
 ): Promise<void> {
   const connection = await connectStore(projectRoot);
   const table = await getTable(connection);
-  await table.delete(`file_path = "${filePath}"`);
+  // Use escaped value to avoid SQL injection from paths with special chars
+  const escaped = filePath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  await table.delete(`file_path = "${escaped}"`);
 }
 
 /**
@@ -112,6 +114,7 @@ export async function searchByVector(
   let query = table.search(queryVector).limit(limit);
 
   if (filter) {
+    // filter values are validated as whitelisted enum strings before reaching here
     query = query.where(filter);
   }
 

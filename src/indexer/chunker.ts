@@ -358,7 +358,7 @@ function chunkCodeAST(content: string, file: FileInfo): Chunk[] {
 
     const startRow = child.startPosition.row;
     const endRow = child.endPosition.row;
-    const chunkContent = lines.slice(startRow, endRow + 1).join('\n');
+    const symbolLines = lines.slice(startRow, endRow + 1);
 
     // Determine the actual declaration node type for classification
     let declType = child.type;
@@ -367,15 +367,36 @@ function chunkCodeAST(content: string, file: FileInfo): Chunk[] {
       if (inner) declType = inner.type;
     }
 
-    chunks.push({
-      id: randomUUID(),
-      file_path: file.relativePath,
-      chunk_type: config.chunkClassifier(name, declType),
-      name,
-      content: `${header}\n\n${chunkContent}`,
-      line_start: startRow + 1,
-      line_end: endRow + 1,
-    });
+    const chunkType = config.chunkClassifier(name, declType);
+
+    // Bound chunk size: symbols > maxSymbolLines are split into sub-chunks
+    // to avoid silent truncation by the OpenAI embeddings API (8192 token limit)
+    const maxLines = CHUNK_CONFIG.maxSymbolLines;
+    if (symbolLines.length > maxLines) {
+      for (let offset = 0; offset < symbolLines.length; offset += maxLines) {
+        const slice = symbolLines.slice(offset, offset + maxLines);
+        const partLabel = offset === 0 ? '' : ` (part ${Math.floor(offset / maxLines) + 1})`;
+        chunks.push({
+          id: randomUUID(),
+          file_path: file.relativePath,
+          chunk_type: chunkType,
+          name: `${name}${partLabel}`,
+          content: `${header}\n\n${slice.join('\n')}`,
+          line_start: startRow + offset + 1,
+          line_end: startRow + Math.min(offset + maxLines, symbolLines.length),
+        });
+      }
+    } else {
+      chunks.push({
+        id: randomUUID(),
+        file_path: file.relativePath,
+        chunk_type: chunkType,
+        name,
+        content: `${header}\n\n${symbolLines.join('\n')}`,
+        line_start: startRow + 1,
+        line_end: endRow + 1,
+      });
+    }
   }
 
   // Fallback: if no chunks extracted, treat as single module
@@ -603,6 +624,69 @@ export function extractFileContext(content: string, filePath: string, extension:
   }
 
   return { imports, exports, symbols, comments };
+}
+
+/**
+ * Combined single-pass: parse symbols AND extract context in one AST traversal.
+ * Use this instead of calling parseFileSymbols + extractFileContext separately.
+ */
+export function parseFileSymbolsAndContext(
+  content: string,
+  filePath: string,
+  extension: string,
+): { symbols: SymbolInfo[]; context: FileContext } {
+  const config = LANGUAGE_CONFIGS[extension];
+  if (!config) {
+    return { symbols: [], context: { imports: [], exports: [], symbols: [], comments: [] } };
+  }
+
+  const parser = getParser(extension);
+  if (!parser) {
+    return { symbols: [], context: { imports: [], exports: [], symbols: [], comments: [] } };
+  }
+
+  const tree = parser.parse(content);
+  const rootNode = tree.rootNode;
+
+  const imports = extractImports(rootNode, extension);
+  const exports = extractExportNames(rootNode, config);
+  const symbols: SymbolInfo[] = [];
+  const ctxSymbols: FileContext['symbols'] = [];
+
+  for (let i = 0; i < rootNode.childCount; i++) {
+    const child = rootNode.child(i)!;
+    if (!config.topLevelTypes.includes(child.type)) continue;
+
+    const name = config.nameExtractor(child);
+    if (!name) continue;
+
+    let declType = child.type;
+    if (child.type === 'export_statement') {
+      const inner = child.children.find((c) => c.type !== 'export' && config.topLevelTypes.includes(c.type));
+      if (inner) declType = inner.type;
+    }
+
+    const kind = config.chunkClassifier(name, declType);
+    const line_start = child.startPosition.row + 1;
+    const line_end = child.endPosition.row + 1;
+
+    symbols.push({ name, kind, line_start, line_end, file_path: filePath });
+    ctxSymbols.push({ name, kind, lines: `${line_start}-${line_end}` });
+  }
+
+  const lines = content.split('\n');
+  const comments: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/^\s*(\/\/|#|\/\*|\*)\s*(TODO|FIXME|HACK|NOTE|WARN|@deprecated)/i.test(line)) {
+      comments.push(`L${i + 1}: ${line.replace(/^\s*(\/\/|#|\/\*|\*)\s*/, '').trim()}`);
+    }
+  }
+
+  return {
+    symbols,
+    context: { imports, exports, symbols: ctxSymbols, comments },
+  };
 }
 
 /**

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { findProjectRoot } from '../indexer/scanner.js';
-import { parseFileSymbols, extractFileContext } from '../indexer/chunker.js';
+import { parseFileSymbolsAndContext } from '../indexer/chunker.js';
 
 export async function handleGetFileOutline(args: Record<string, unknown>) {
   const filePath = args.file as string;
@@ -27,8 +27,8 @@ export async function handleGetFileOutline(args: Record<string, unknown>) {
     };
   }
 
-  const symbols = parseFileSymbols(content, filePath, extension);
-  const ctx = extractFileContext(content, filePath, extension);
+  // Single-pass AST: symbols + context in one traversal
+  const { symbols, context: ctx } = parseFileSymbolsAndContext(content, filePath, extension);
   const lineCount = content.split('\n').length;
 
   const response: Record<string, unknown> = {

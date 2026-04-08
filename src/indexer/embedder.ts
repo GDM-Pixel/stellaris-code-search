@@ -8,6 +8,10 @@ export interface EmbeddedChunk extends Chunk {
 
 let client: OpenAI | null = null;
 
+// LRU cache for query embeddings — avoids redundant API calls for repeated queries
+const queryEmbedCache = new Map<string, number[]>();
+const QUERY_CACHE_MAX = 100;
+
 function getClient(): OpenAI {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is required for semantic search and indexing. Set it in your environment or .env file.');
@@ -19,15 +23,25 @@ function getClient(): OpenAI {
 }
 
 /**
- * Embed a single text string
+ * Embed a single text string with LRU cache (for search queries).
  */
 export async function embedText(text: string): Promise<number[]> {
+  if (queryEmbedCache.has(text)) return queryEmbedCache.get(text)!;
+
   const openai = getClient();
   const response = await openai.embeddings.create({
     model: CHUNK_CONFIG.embeddingModel,
     input: text,
   });
-  return response.data[0].embedding;
+  const vector = response.data[0].embedding;
+
+  // Evict oldest entry if at capacity
+  if (queryEmbedCache.size >= QUERY_CACHE_MAX) {
+    queryEmbedCache.delete(queryEmbedCache.keys().next().value!);
+  }
+  queryEmbedCache.set(text, vector);
+
+  return vector;
 }
 
 /**
@@ -59,16 +73,30 @@ export async function embedChunks(chunks: Chunk[]): Promise<EmbeddedChunk[]> {
       console.error(`[Stellaris] Embedded ${progress}/${chunks.length} chunks`);
     } catch (error: any) {
       console.error(`[Stellaris] Embedding batch failed (offset ${i}):`, error.message);
-      // Retry individual chunks in the failed batch
+      // Retry individual chunks with exponential backoff
+      // Avoids hammering the API immediately after a rate limit (429)
       for (const chunk of batch) {
-        try {
-          const single = await openai.embeddings.create({
-            model: CHUNK_CONFIG.embeddingModel,
-            input: chunk.content,
-          });
-          results.push({ ...chunk, vector: single.data[0].embedding });
-        } catch (retryError: any) {
-          console.error(`[Stellaris] Skipping chunk ${chunk.name}: ${retryError.message}`);
+        let embedded = false;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            if (attempt > 0) {
+              await new Promise(r => setTimeout(r, 500 * 2 ** (attempt - 1)));
+            }
+            const single = await openai.embeddings.create({
+              model: CHUNK_CONFIG.embeddingModel,
+              input: chunk.content,
+            });
+            results.push({ ...chunk, vector: single.data[0].embedding });
+            embedded = true;
+            break;
+          } catch (retryError: any) {
+            if (attempt === 2) {
+              console.error(`[Stellaris] Skipping chunk ${chunk.name}: ${retryError.message}`);
+            }
+          }
+        }
+        if (!embedded) {
+          // Skip chunk — indexing continues without it
         }
       }
     }

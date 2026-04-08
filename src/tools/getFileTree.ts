@@ -1,9 +1,21 @@
 import { findProjectRoot, scanFiles } from '../indexer/scanner.js';
 import { loadConfig } from '../config/loader.js';
 
+type FileTreeResult = { content: [{ type: 'text'; text: string }] };
+
+// Cache to avoid redundant glob scans on repeated calls within 30s
+const treeCache = new Map<string, { result: FileTreeResult; ts: number }>();
+const TREE_CACHE_TTL_MS = 30_000;
+
 export async function handleGetFileTree(args: Record<string, unknown>) {
   const path = args.path as string | undefined;
   const projectRoot = path ?? findProjectRoot(process.cwd());
+
+  const cached = treeCache.get(projectRoot);
+  if (cached && Date.now() - cached.ts < TREE_CACHE_TTL_MS) {
+    return cached.result;
+  }
+
   const config = await loadConfig(projectRoot);
   const files = await scanFiles(projectRoot, config);
 
@@ -22,7 +34,7 @@ export async function handleGetFileTree(args: Record<string, unknown>) {
   const docFiles = files.filter((f) => f.category === 'docs');
   const extensions = new Set(files.map((f) => f.extension));
 
-  return {
+  const result: FileTreeResult = {
     content: [{
       type: 'text' as const,
       text: JSON.stringify({
@@ -35,4 +47,7 @@ export async function handleGetFileTree(args: Record<string, unknown>) {
       }, null, 2) + '\n\n💡 Next steps:\n  • search_code(query) — find specific functionality by natural language\n  • get_file_outline(file) — see symbols, imports, and exports of a file\n  • search_docs(query) — search documentation sections',
     }],
   };
+
+  treeCache.set(projectRoot, { result, ts: Date.now() });
+  return result;
 }

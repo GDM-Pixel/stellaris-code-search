@@ -52,6 +52,12 @@ export const CHUNK_CONFIG = {
   embeddingModel: 'text-embedding-3-small' as const,
   /** Embedding dimensions */
   embeddingDimensions: 1536,
+  /**
+   * Max lines for a single AST symbol chunk.
+   * Symbols longer than this are split into sub-chunks to avoid silent truncation
+   * by the OpenAI embeddings API (8192 token limit).
+   */
+  maxSymbolLines: 300,
 } as const;
 
 export const LANCEDB_TABLE_NAME = 'code_chunks';

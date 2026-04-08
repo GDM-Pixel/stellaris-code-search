@@ -24,6 +24,7 @@ import { handleUsageStats } from './tools/usageStats.js';
 import { handleUsageDashboard } from './tools/usageDashboard.js';
 import { autoIndex, autoScanUsage } from './startup.js';
 import { PROMPTS, getPromptMessages } from './prompts.js';
+import { closeGraphStore } from './graph/store.js';
 
 // Warn if OPENAI_API_KEY is missing (semantic search won't work, but AST tools will)
 if (!process.env.OPENAI_API_KEY) {
@@ -339,3 +340,11 @@ main().catch((error) => {
   console.error('[Stellaris] Fatal error:', error);
   process.exit(1);
 });
+
+// Graceful shutdown: close SQLite connections to flush WAL
+function shutdown() {
+  closeGraphStore();
+  process.exit(0);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

@@ -68,10 +68,16 @@ async function runVectorSearch(
 ): Promise<SearchResult[]> {
   const queryVector = await embedText(query);
 
+  // Whitelist chunk_type values to prevent injection via filter strings
+  const VALID_CHUNK_TYPES = new Set([
+    'function', 'component', 'hook', 'class', 'type', 'export',
+    'module', 'doc_section', 'method', 'struct', 'trait', 'impl', 'rule', 'element',
+  ]);
+
   let lanceFilter: string | undefined;
-  if (filter?.chunkType) {
+  if (filter?.chunkType && VALID_CHUNK_TYPES.has(filter.chunkType)) {
     lanceFilter = `chunk_type = '${filter.chunkType}'`;
-  } else if (filter?.chunkTypeNot) {
+  } else if (filter?.chunkTypeNot && VALID_CHUNK_TYPES.has(filter.chunkTypeNot)) {
     lanceFilter = `chunk_type != '${filter.chunkTypeNot}'`;
   }
 

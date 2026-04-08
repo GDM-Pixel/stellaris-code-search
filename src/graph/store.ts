@@ -136,6 +136,16 @@ export async function getGraphStats(projectRoot: string): Promise<{
 }
 
 /**
+ * Close the graph DB connection cleanly (call on SIGTERM/SIGINT).
+ */
+export function closeGraphStore(): void {
+  if (db) {
+    db.close();
+    db = null;
+  }
+}
+
+/**
  * Check if graph has any data.
  */
 export async function hasGraph(projectRoot: string): Promise<boolean> {
