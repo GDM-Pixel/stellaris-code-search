@@ -193,6 +193,20 @@ function searchLike(
 }
 
 /**
+ * Return all distinct file_path values indexed in FTS.
+ * Used by integrity checker to detect orphaned entries.
+ */
+export async function getIndexedFilePaths(projectRoot: string): Promise<Set<string>> {
+  try {
+    const conn = await connectFTS(projectRoot);
+    const rows = conn.prepare('SELECT DISTINCT file_path FROM chunks').all() as { file_path: string }[];
+    return new Set(rows.map(r => r.file_path));
+  } catch {
+    return new Set();
+  }
+}
+
+/**
  * Check if FTS index exists and has data.
  */
 export async function hasFTSIndex(projectRoot: string): Promise<boolean> {
