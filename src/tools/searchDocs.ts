@@ -1,6 +1,7 @@
 import { findProjectRoot } from '../indexer/scanner.js';
-import { embedText } from '../indexer/embedder.js';
-import { searchByVector, hasIndex } from '../store/lancedb.js';
+import { hasIndex } from '../store/lancedb.js';
+import { hasFTSIndex } from '../store/fts.js';
+import { hybridSearch } from '../search/hybrid.js';
 
 export async function handleSearchDocs(args: Record<string, unknown>) {
   const query = args.query as string;
@@ -15,8 +16,12 @@ export async function handleSearchDocs(args: Record<string, unknown>) {
 
   const projectRoot = findProjectRoot(process.cwd());
 
-  const indexed = await hasIndex(projectRoot);
-  if (!indexed) {
+  const [hasVector, hasFTS] = await Promise.all([
+    hasIndex(projectRoot),
+    hasFTSIndex(projectRoot),
+  ]);
+
+  if (!hasVector && !hasFTS) {
     return {
       content: [{
         type: 'text' as const,
@@ -30,18 +35,17 @@ export async function handleSearchDocs(args: Record<string, unknown>) {
     };
   }
 
-  const queryVector = await embedText(query);
-
-  // Search in doc chunks only
-  const filter = `chunk_type = 'doc_section'`;
-  const results = await searchByVector(projectRoot, queryVector, limit, filter);
+  const results = await hybridSearch(projectRoot, query, limit, {
+    chunkType: 'doc_section',
+  });
 
   const formatted = results.map((r, i) => ({
     rank: i + 1,
     file: r.file_path,
     section: r.name,
     lines: `${r.line_start}-${r.line_end}`,
-    score: Math.round((1 - r._distance) * 100) / 100,
+    score: r.score,
+    sources: r.sources,
     content: r.content,
   }));
 
@@ -51,6 +55,7 @@ export async function handleSearchDocs(args: Record<string, unknown>) {
       text: JSON.stringify({
         query,
         results_count: formatted.length,
+        search_mode: (hasVector && hasFTS) ? 'hybrid' : hasVector ? 'vector' : 'fts',
         results: formatted,
       }, null, 2),
     }],

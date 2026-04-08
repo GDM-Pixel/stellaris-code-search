@@ -48,10 +48,13 @@ export async function handleGetFileOutline(args: Record<string, unknown>) {
     response.warnings = ctx.comments;
   }
 
+  const symbolHints = symbols.slice(0, 3).map(s => `  • get_symbol("${filePath}", "${s.name}") — read full source`).join('\n');
+  const nextSteps = `\n\n💡 Next steps:\n${symbolHints || `  • get_symbol("${filePath}", name) — read a specific symbol`}\n  • search_code(query) — find related code across the project`;
+
   return {
     content: [{
       type: 'text' as const,
-      text: JSON.stringify(response, null, 2),
+      text: JSON.stringify(response, null, 2) + nextSteps,
     }],
   };
 }

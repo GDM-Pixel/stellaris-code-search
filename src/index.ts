@@ -6,16 +6,22 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   ErrorCode,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { handleSearchCode } from './tools/searchCode.js';
 import { handleSearchDocs } from './tools/searchDocs.js';
-import { handleReindex } from './tools/reindex.js';
+import { handleReindex, handleReindexFile } from './tools/reindex.js';
 import { handleGetFileTree } from './tools/getFileTree.js';
 import { handleGetFileOutline } from './tools/getFileOutline.js';
 import { handleGetSymbol } from './tools/getSymbol.js';
+import { handleGetDependencies } from './tools/getDependencies.js';
+import { handleGetDependents } from './tools/getDependents.js';
+import { handleGetBlastRadius } from './tools/getBlastRadius.js';
 import { autoIndex } from './startup.js';
+import { PROMPTS, getPromptMessages } from './prompts.js';
 
 // Warn if OPENAI_API_KEY is missing (semantic search won't work, but AST tools will)
 if (!process.env.OPENAI_API_KEY) {
@@ -30,6 +36,7 @@ const server = new Server(
   {
     capabilities: {
       tools: {},
+      prompts: {},
     },
   },
 );
@@ -98,6 +105,21 @@ const TOOLS = [
     },
   },
   {
+    name: 'reindex_file',
+    description:
+      'Reindex a single file after it has been modified or created. Much faster than a full reindex — use this in hooks after Write/Edit tool calls to keep the index up-to-date in real time. Requires OPENAI_API_KEY.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        file: {
+          type: 'string',
+          description: 'Absolute path to the modified file (e.g., "/home/user/project/src/foo.ts")',
+        },
+      },
+      required: ['file'],
+    },
+  },
+  {
     name: 'get_file_tree',
     description:
       'Get the project file tree structure. Returns all indexed files organized by directory, with stats on languages and file counts. No API call needed — instant response.',
@@ -149,12 +171,80 @@ const TOOLS = [
       required: ['file', 'name'],
     },
   },
+  {
+    name: 'get_dependencies',
+    description:
+      'Get the files that a given file imports (its dependencies). Shows the dependency chain from this file outward. Requires a prior reindex to build the dependency graph. No API call needed.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        file: {
+          type: 'string',
+          description: 'Relative file path from project root (e.g., "src/tools/searchCode.ts")',
+        },
+        depth: {
+          type: 'number',
+          description: 'How many levels deep to traverse (default: 1 = direct imports only, 2 = imports of imports)',
+        },
+      },
+      required: ['file'],
+    },
+  },
+  {
+    name: 'get_dependents',
+    description:
+      'Get the files that import a given file (its dependents / reverse dependencies). Shows what other code relies on this file. Requires a prior reindex to build the dependency graph. No API call needed.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        file: {
+          type: 'string',
+          description: 'Relative file path from project root (e.g., "src/tools/searchCode.ts")',
+        },
+      },
+      required: ['file'],
+    },
+  },
+  {
+    name: 'get_blast_radius',
+    description:
+      'Analyze the blast radius of changes to a file: find all files that would be directly or transitively affected. Uses BFS on the dependency graph. Returns severity assessment, impacted files by depth, and edges. Requires a prior reindex. No API call needed.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        file: {
+          type: 'string',
+          description: 'Relative file path from project root (e.g., "src/tools/searchCode.ts")',
+        },
+        depth: {
+          type: 'number',
+          description: 'Maximum BFS depth (default: 2). Higher values = wider blast radius but slower.',
+        },
+      },
+      required: ['file'],
+    },
+  },
 ];
 
 // List tools handler
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: TOOLS,
 }));
+
+// List prompts handler
+server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+  prompts: PROMPTS,
+}));
+
+// Get prompt handler
+server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  const { name, arguments: promptArgs } = request.params;
+  const args = (promptArgs ?? {}) as Record<string, string>;
+  return {
+    description: PROMPTS.find(p => p.name === name)?.description ?? name,
+    messages: getPromptMessages(name, args),
+  };
+});
 
 // Call tool handler
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -168,12 +258,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleSearchDocs(args ?? {});
       case 'reindex':
         return await handleReindex(args ?? {});
+      case 'reindex_file':
+        return await handleReindexFile(args ?? {});
       case 'get_file_tree':
         return await handleGetFileTree(args ?? {});
       case 'get_file_outline':
         return await handleGetFileOutline(args ?? {});
       case 'get_symbol':
         return await handleGetSymbol(args ?? {});
+      case 'get_dependencies':
+        return await handleGetDependencies(args ?? {});
+      case 'get_dependents':
+        return await handleGetDependents(args ?? {});
+      case 'get_blast_radius':
+        return await handleGetBlastRadius(args ?? {});
       default:
         throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
     }

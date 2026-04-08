@@ -12,15 +12,17 @@ Combine la puissance des **embeddings vectoriels** (OpenAI + LanceDB) pour la re
 
 ## Fonctionnalites
 
-- **Recherche semantique** dans le code et la documentation via embeddings
-- **Exploration AST** : arbre de fichiers, outline de symboles, extraction de code source
+- **Recherche hybride** (FTS5 + embeddings vectoriels + RRF) — trouve les identifiants exacts *et* les concepts semantiques
+- **Graphe de dependances** — resout les imports vers les vrais chemins de fichiers, suit les dependances fichier→fichier
+- **Analyse blast radius** — BFS pour trouver tout ce qui serait impacte par un changement
+- **Prompts MCP** — 4 workflows guides (`/nova_explore`, `/nova_find`, `/nova_file`, `/nova_review`)
+- **Hook auto-reindex** — maintient l'index a jour automatiquement apres chaque Write/Edit
+- **Exploration AST** : arbre de fichiers, outline de symboles, extraction de code source — zero API call
+- **Contexte enrichi** : imports, symboles voisins et avertissements TODO/FIXME inclus automatiquement
 - **Indexation incrementale** : seuls les fichiers modifies sont re-indexes
 - **Securise par defaut** : aucune auto-indexation tant que vous n'avez pas lance `reindex` une premiere fois
 - **Auto-indexation** aux demarrages suivants (opt-in via `.stellarisrc`)
 - **23 extensions de fichiers** : TS, JS, Python, Go, Rust, PHP, HTML, CSS, Astro, Vue, Svelte, SCSS, JSON, YAML, SQL, GraphQL, Prisma, TOML, etc.
-- **Documentation** : indexation et recherche dans les fichiers Markdown/MDX
-- **Filtre par extension** : `search_code` accepte un parametre `extensions` pour cibler les resultats sur des types de fichiers specifiques
-- **Contexte enrichi** : imports, symboles voisins et avertissements TODO/FIXME inclus automatiquement
 - **Degradation gracieuse** : fonctionne sans `OPENAI_API_KEY` (les outils AST restent disponibles)
 
 ## Benchmark : Stellaris vs Grep/Glob
@@ -36,15 +38,16 @@ Teste sur un projet Astro reel (341 fichiers, 430 chunks indexes) :
 
 Stellaris excelle sur les questions complexes multi-fichiers (flux d'auth, logique de paiement, systemes i18n). Grep/Glob restent meilleurs pour les listings exhaustifs de fichiers. Strategie optimale : **Stellaris d'abord, Grep/Glob en complement**.
 
-## Outils exposes (6)
+## Outils exposes (10)
 
 ### Recherche semantique (necessite OpenAI API)
 
 | Outil | Description |
 |-------|-------------|
-| `search_code` | Recherche en langage naturel dans le code. Retourne fichiers, lignes et previews. Accepte un filtre `extensions` optionnel (ex: `[".ts", ".js"]`). |
-| `search_docs` | Recherche en langage naturel dans la documentation Markdown. |
-| `reindex` | Force la re-indexation incrementale du projet. Accepte `enable_auto_index` pour activer/desactiver l'auto-indexation. |
+| `search_code` | Recherche hybride (FTS + vecteurs + RRF) dans le code. Retourne fichiers, lignes, previews et `search_mode`. Filtre `extensions` optionnel. |
+| `search_docs` | Recherche hybride dans la documentation Markdown. |
+| `reindex` | Re-indexation incrementale : construit l'index vectoriel, FTS et le graphe de dependances. |
+| `reindex_file` | Re-indexe un seul fichier par chemin absolu. Utilise par les hooks apres edition. |
 
 ### Exploration structurelle (zero API call)
 
@@ -52,7 +55,26 @@ Stellaris excelle sur les questions complexes multi-fichiers (flux d'auth, logiq
 |-------|-------------|
 | `get_file_tree` | Arbre de fichiers du projet avec stats par langage. |
 | `get_file_outline` | Liste les symboles d'un fichier avec lignes + imports, exports et avertissements TODO/FIXME. |
-| `get_symbol` | Retourne le code source complet d'un symbole + contexte du fichier (imports, symboles voisins, avertissements). |
+| `get_symbol` | Code source complet d'un symbole + contexte du fichier (imports, symboles voisins, avertissements). |
+
+### Graphe de dependances (zero API call)
+
+| Outil | Description |
+|-------|-------------|
+| `get_dependencies` | Fichiers qu'un fichier donne importe. Parametre `depth` pour la traversee transitive. |
+| `get_dependents` | Fichiers qui importent un fichier donne (dependances inverses). |
+| `get_blast_radius` | Analyse BFS d'impact : trouve tous les fichiers affectes transitivement par un changement. Retourne la severite (LOW/MEDIUM/HIGH) et les fichiers groupes par profondeur. |
+
+## Prompts MCP
+
+Tapez `/nova` dans Claude Code pour acceder aux workflows guides :
+
+| Prompt | Description |
+|--------|-------------|
+| `/nova_explore` | Exploration complete de la codebase — file_tree → search → outline → symbol |
+| `/nova_find` | Localiser comment une fonctionnalite est implementee |
+| `/nova_file` | Analyse approfondie d'un fichier — outline + symboles cles |
+| `/nova_review` | Examiner les fichiers recemment modifies et evaluer leur blast radius |
 
 ## Contexte enrichi automatique
 
@@ -94,15 +116,22 @@ Le parametre `context` de `get_symbol` peut etre mis a `false` pour ne recevoir 
 
 ## Workflow recommande
 
-1. **`reindex`** pour indexer le projet la premiere fois (requis avant la recherche semantique)
-2. **`get_file_tree`** pour decouvrir la structure du projet
-3. **`search_code`** pour trouver des fonctionnalites par description naturelle
-4. **`get_file_outline`** pour voir les symboles + imports/exports d'un fichier identifie
-5. **`get_symbol`** pour recuperer le code exact avec le contexte environnant
+1. **`reindex`** — indexer le projet la premiere fois (construit vecteurs, FTS et graphe)
+2. **`get_file_tree`** — decouvrir la structure du projet
+3. **`search_code`** — trouver des fonctionnalites par description naturelle (recherche hybride)
+4. **`get_file_outline`** — voir les symboles + imports/exports d'un fichier identifie
+5. **`get_symbol`** — recuperer le code exact avec le contexte environnant
 
-Les etapes 2, 4, 5 ne consomment **aucun token d'API** — seule la recherche semantique utilise les embeddings OpenAI.
+Ou utilisez `/nova_explore` pour executer les etapes 2 a 5 en workflow guide.
 
-Apres le premier `reindex`, un fichier `.stellarisrc` est cree a la racine du projet avec `auto_index=true`. Les demarrages suivants du serveur lanceront automatiquement l'indexation incrementale (uniquement les fichiers modifies).
+**Workflow d'analyse d'impact :**
+1. **`get_dependents`** — qui importe le fichier que vous allez modifier ?
+2. **`get_blast_radius`** — impact transitif complet avant modification
+3. **`get_dependencies`** — de quoi depend ce fichier ?
+
+Les etapes 2, 4, 5 et tous les outils graphe ne consomment **aucun token d'API**.
+
+Apres le premier `reindex`, un fichier `.stellarisrc` est cree a la racine du projet avec `auto_index=true`. Les demarrages suivants lanceront automatiquement l'indexation incrementale.
 
 ## Installation
 

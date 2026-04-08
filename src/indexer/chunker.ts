@@ -258,7 +258,7 @@ function buildHeader(file: FileInfo, imports: string[], exports: string[]): stri
   return lines.join('\n');
 }
 
-function extractImports(rootNode: Parser.SyntaxNode, extension: string): string[] {
+export function extractImports(rootNode: Parser.SyntaxNode, extension: string): string[] {
   const imports: string[] = [];
 
   for (let i = 0; i < rootNode.childCount; i++) {
@@ -282,6 +282,21 @@ function extractImports(rootNode: Parser.SyntaxNode, extension: string): string[
   }
 
   return imports;
+}
+
+/**
+ * Extract raw import strings from a file (convenience wrapper).
+ * Used by the graph builder to feed the import resolver.
+ */
+export function extractFileImports(content: string, extension: string): string[] {
+  const config = LANGUAGE_CONFIGS[extension];
+  if (!config) return [];
+
+  const parser = getParser(extension);
+  if (!parser) return [];
+
+  const tree = parser.parse(content);
+  return extractImports(tree.rootNode, extension);
 }
 
 function extractExportNames(rootNode: Parser.SyntaxNode, config: LanguageConfig): string[] {

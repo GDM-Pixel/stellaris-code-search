@@ -32,7 +32,7 @@ export async function handleGetFileTree(args: Record<string, unknown>) {
         doc_files: docFiles.length,
         languages: [...extensions].sort(),
         tree,
-      }, null, 2),
+      }, null, 2) + '\n\n💡 Next steps:\n  • search_code(query) — find specific functionality by natural language\n  • get_file_outline(file) — see symbols, imports, and exports of a file\n  • search_docs(query) — search documentation sections',
     }],
   };
 }

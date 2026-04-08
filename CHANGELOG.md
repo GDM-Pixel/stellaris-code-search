@@ -1,5 +1,36 @@
 # Changelog
 
+## [3.0.0] - 2026-04-08
+
+### Added
+- **MCP Prompts** — 4 guided workflows accessible via `/nova_*` in Claude Code:
+  - `nova_explore` — full codebase walkthrough (file_tree → search → outline → symbol)
+  - `nova_find` — locate a feature's implementation by natural language description
+  - `nova_file` — deep-dive into a specific file (outline + key symbols)
+  - `nova_review` — review recently changed files and assess their impact
+- **`💡 Next steps` hints** — every tool response now suggests the most useful follow-up tool call, guiding Claude through the recommended workflow
+- **`reindex_file` tool** — re-index a single file after editing, much faster than a full `reindex`. Used by auto-reindex hooks
+- **Auto-reindex hook** — `PostToolUse` hook for Claude Code's `settings.json` that calls `reindex_file` automatically after every `Write` or `Edit`, keeping the index fresh in real time
+- **Hybrid search (FTS + vector + RRF)** — `search_code` and `search_docs` now combine full-text search (SQLite FTS5 BM25) with vector embeddings, merged via Reciprocal Rank Fusion (k=60). Dramatically improves results for exact identifier names (function names, class names, variable names)
+  - Query-aware kind boosting: PascalCase → classes, camelCase/snake_case → functions
+  - Fallback chain: hybrid → FTS only → LIKE match
+  - Results include `search_mode` (`hybrid`/`vector`/`fts`) and `sources` per result
+- **Dependency graph** — during `reindex`, imports are resolved to real file paths and stored in a SQLite graph (`graph.db`). Supports TS path aliases, barrel files, and implicit extensions
+- **`get_dependencies(file, depth?)` tool** — files that a given file imports, with optional depth traversal
+- **`get_dependents(file)` tool** — files that import a given file (reverse dependencies)
+- **`get_blast_radius(file, depth?)` tool** — BFS analysis of change impact: finds all files transitively affected, grouped by depth, with severity assessment (LOW/MEDIUM/HIGH)
+
+### Changed
+- `search_code` / `search_docs` — replaced pure vector search with hybrid search; search quality improved for exact symbol lookups
+- `reindex` — now also builds FTS index (`fts.db`) and dependency graph (`graph.db`) in `.vectors/`
+- Tool count: **6 → 10 tools** + **4 MCP prompts**
+
+### Dependencies
+- Added `better-sqlite3` for FTS5 index and dependency graph storage
+
+### Migration
+Projects indexed with v2.x need a one-time `reindex` to build the new FTS and graph indexes. Existing LanceDB vectors are preserved (incremental).
+
 ## [2.3.0] - 2026-03-06
 
 ### Added

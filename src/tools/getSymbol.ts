@@ -72,10 +72,12 @@ export async function handleGetSymbol(args: Record<string, unknown>) {
     }
   }
 
+  const nextSteps = `\n\n💡 Next steps:\n  • search_code("${symbolName}") — find other files that reference this symbol\n  • get_file_outline("${filePath}") — see all symbols in this file\n  • get_symbol("${filePath}", siblingName) — read another symbol from same file`;
+
   return {
     content: [{
       type: 'text' as const,
-      text: JSON.stringify(response, null, 2),
+      text: JSON.stringify(response, null, 2) + nextSteps,
     }],
   };
 }

@@ -12,15 +12,17 @@ Search your codebase with natural language, browse file structures, inspect symb
 
 ## Features
 
-- **Semantic search** across code and documentation via embeddings
+- **Hybrid search** (FTS5 + vector embeddings + RRF) — finds exact identifiers *and* semantic concepts
+- **Dependency graph** — resolves imports to real file paths, tracks file→file dependencies
+- **Blast radius analysis** — BFS traversal to find what would break if you change a file
+- **MCP Prompts** — 4 guided workflows (`/nova_explore`, `/nova_find`, `/nova_file`, `/nova_review`)
+- **Auto-reindex hook** — keeps the index fresh automatically after every Write/Edit
 - **AST exploration**: file tree, symbol outlines, source extraction — zero API calls
 - **Context-aware**: imports, sibling symbols, and TODO/FIXME warnings included automatically
 - **Incremental indexing**: only changed files are re-embedded
 - **Safe by default**: no auto-indexing until you explicitly run `reindex` for the first time
 - **Auto-indexing** on subsequent startups (opt-in via `.stellarisrc`)
 - **23 file extensions**: TS, JS, Python, Go, Rust, PHP, HTML, CSS, Astro, Vue, Svelte, SCSS, JSON, YAML, SQL, GraphQL, Prisma, TOML, and more
-- **Documentation**: indexes and searches Markdown/MDX files
-- **Extension filter**: `search_code` accepts an `extensions` param to focus results on specific file types
 - **Graceful degradation**: works without `OPENAI_API_KEY` (AST tools still available)
 
 ## Benchmark: Stellaris vs Grep/Glob
@@ -36,23 +38,43 @@ Tested on a real-world Astro project (341 files, 430 chunks indexed):
 
 Stellaris excels at complex multi-file questions (auth flows, payment logic, i18n systems). Grep/Glob remain better for exhaustive file listings. Best strategy: **Stellaris first, Grep/Glob as complement**.
 
-## Tools (6)
+## Tools (10)
 
 ### Semantic search (requires OpenAI API key)
 
 | Tool | Description |
 |------|-------------|
-| `search_code` | Natural language search in code files. Returns files, lines, and previews. Accepts optional `extensions` filter (e.g., `[".ts", ".js"]`). |
-| `search_docs` | Natural language search in Markdown documentation. |
-| `reindex` | Force incremental re-indexing of the project. Accepts `enable_auto_index` to toggle auto-indexing. |
+| `search_code` | Hybrid search (FTS + vector + RRF) in code files. Returns files, lines, previews, and `search_mode`. Accepts optional `extensions` filter. |
+| `search_docs` | Hybrid search in Markdown documentation. |
+| `reindex` | Incremental re-indexing of the project. Builds vector index, FTS index, and dependency graph. |
+| `reindex_file` | Re-index a single file by absolute path. Used by auto-reindex hooks after edits. |
 
 ### Structural exploration (no API calls)
 
 | Tool | Description |
 |------|-------------|
 | `get_file_tree` | Project file tree with language stats. |
-| `get_file_outline` | List symbols in a file with line ranges + file imports, exports, and TODO/FIXME warnings. |
-| `get_symbol` | Retrieve the full source code of a specific symbol + surrounding file context (imports, sibling symbols, warnings). |
+| `get_file_outline` | List symbols in a file with line ranges + imports, exports, and TODO/FIXME warnings. |
+| `get_symbol` | Full source code of a specific symbol + surrounding file context (imports, siblings, warnings). |
+
+### Dependency graph (no API calls)
+
+| Tool | Description |
+|------|-------------|
+| `get_dependencies` | Files that a given file imports. Supports `depth` parameter for transitive traversal. |
+| `get_dependents` | Files that import a given file (reverse dependencies). |
+| `get_blast_radius` | BFS impact analysis: finds all files transitively affected by changes to a file. Returns severity (LOW/MEDIUM/HIGH) and files grouped by depth. |
+
+## MCP Prompts
+
+Type `/nova` in Claude Code to access guided workflows:
+
+| Prompt | Description |
+|--------|-------------|
+| `/nova_explore` | Full codebase walkthrough — file_tree → search → outline → symbol |
+| `/nova_find` | Locate how a feature is implemented (semantic → drill-down) |
+| `/nova_file` | Deep-dive into a specific file — outline + key symbols |
+| `/nova_review` | Review recently changed files and assess their blast radius |
 
 ## Context-aware design
 
@@ -94,15 +116,43 @@ The `context` parameter on `get_symbol` can be set to `false` if you only need t
 
 ## Recommended workflow
 
-1. **`reindex`** to index the project for the first time (required before semantic search)
-2. **`get_file_tree`** to discover the project structure
-3. **`search_code`** to find features by natural language description
-4. **`get_file_outline`** to view symbols + imports/exports in a matched file
-5. **`get_symbol`** to retrieve exact source code with surrounding context
+1. **`reindex`** — index the project for the first time (builds vector, FTS, and graph indexes)
+2. **`get_file_tree`** — discover the project structure
+3. **`search_code`** — find features by natural language description (hybrid search)
+4. **`get_file_outline`** — view symbols + imports/exports in a matched file
+5. **`get_symbol`** — retrieve exact source code with surrounding context
 
-Steps 2, 4, and 5 consume **zero API tokens** — only semantic search uses OpenAI embeddings.
+Or use `/nova_explore` to run steps 2–5 as a guided workflow.
+
+**Impact analysis workflow:**
+1. **`get_dependents`** — find who imports a file you're about to change
+2. **`get_blast_radius`** — get full transitive impact before making changes
+3. **`get_dependencies`** — understand what a file relies on
+
+Steps 2, 4, 5, and all graph tools consume **zero API tokens**.
 
 After the first `reindex`, a `.stellarisrc` file is created in the project root with `auto_index=true`. Subsequent server startups will automatically run incremental indexing (only changed files).
+
+### Auto-reindex hook
+
+To keep the index fresh in real time during Claude Code sessions, add this to your `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [{
+      "matcher": "Write|Edit",
+      "hooks": [{
+        "type": "command",
+        "command": "node \"/path/to/stellaris-code-search/scripts/reindex-file.mjs\" \"$file_path\" 2>&1 || true",
+        "timeout": 30
+      }]
+    }]
+  }
+}
+```
+
+Replace `/path/to/stellaris-code-search` with the actual path to your Stellaris installation.
 
 ## Installation
 
@@ -211,8 +261,9 @@ Add to your `claude_desktop_config.json`:
 
 ```
 src/
-  index.ts              # MCP entry point, tool registration
+  index.ts              # MCP entry point, tool + prompt registration
   startup.ts            # Auto-indexing on startup (reads .stellarisrc)
+  prompts.ts            # MCP Prompts definitions (nova_explore, nova_find, ...)
   config/
     defaults.ts         # Extensions, chunking settings, LanceDB config
     loader.ts           # .vectorconfig.json loader
@@ -224,19 +275,33 @@ src/
     hasher.ts           # SHA-256 hashing for incremental indexing
   store/
     lancedb.ts          # LanceDB vector storage
+    fts.ts              # SQLite FTS5 full-text index
+  search/
+    hybrid.ts           # RRF fusion of vector + FTS results
+  graph/
+    resolver.ts         # Import string → real file path resolution
+    store.ts            # SQLite dependency graph (graph.db)
+    blast.ts            # BFS blast radius + dependency chain
   tools/
-    searchCode.ts       # search_code tool
-    searchDocs.ts       # search_docs tool
-    reindex.ts          # reindex tool
+    searchCode.ts       # search_code tool (hybrid)
+    searchDocs.ts       # search_docs tool (hybrid)
+    reindex.ts          # reindex + reindex_file tools
     getFileTree.ts      # get_file_tree tool
     getFileOutline.ts   # get_file_outline tool
     getSymbol.ts        # get_symbol tool
+    getDependencies.ts  # get_dependencies tool
+    getDependents.ts    # get_dependents tool
+    getBlastRadius.ts   # get_blast_radius tool
+scripts/
+  reindex-file.mjs      # Hook script for auto-reindex after Write/Edit
 ```
 
 ## Storage
 
 The index is stored in `.vectors/` at the project root:
-- `.vectors/lancedb/` — LanceDB vector database
+- `.vectors/lancedb/` — LanceDB vector database (embeddings)
+- `.vectors/fts.db` — SQLite FTS5 full-text index
+- `.vectors/graph.db` — SQLite dependency graph
 - `.vectors/meta.json` — file meta-index (hashes, chunk IDs, timestamps)
 
 This directory is automatically excluded from scanning.
