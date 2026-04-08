@@ -5,3 +5,8 @@ dist/
 .vectors/
 *.log
 *.tsbuildinfo
+# Local config — environment-specific, not for sharing
+.stellarisrc
+.claude/
+# Internal audit file — not for public repo
+AUDIT.md
