@@ -20,7 +20,9 @@ import { handleGetSymbol } from './tools/getSymbol.js';
 import { handleGetDependencies } from './tools/getDependencies.js';
 import { handleGetDependents } from './tools/getDependents.js';
 import { handleGetBlastRadius } from './tools/getBlastRadius.js';
-import { autoIndex } from './startup.js';
+import { handleUsageStats } from './tools/usageStats.js';
+import { handleUsageDashboard } from './tools/usageDashboard.js';
+import { autoIndex, autoScanUsage } from './startup.js';
 import { PROMPTS, getPromptMessages } from './prompts.js';
 
 // Warn if OPENAI_API_KEY is missing (semantic search won't work, but AST tools will)
@@ -31,7 +33,7 @@ if (!process.env.OPENAI_API_KEY) {
 const server = new Server(
   {
     name: 'stellaris-mcp',
-    version: '2.3.0',
+    version: '3.1.0',
   },
   {
     capabilities: {
@@ -224,6 +226,38 @@ const TOOLS = [
       required: ['file'],
     },
   },
+  {
+    name: 'usage_stats',
+    description: 'Get Claude Code token usage statistics and estimated API costs. Shows consumption by model, project, or day for a given period. No API key required.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        period: {
+          type: 'string',
+          enum: ['today', '7d', '30d', 'all'],
+          description: 'Time period to query (default: today)',
+        },
+        group_by: {
+          type: 'string',
+          enum: ['model', 'project', 'day'],
+          description: 'Group results by model, project, or day (default: model)',
+        },
+      },
+    },
+  },
+  {
+    name: 'usage_dashboard',
+    description: 'Launch a local web dashboard showing Claude Code token usage with interactive charts. Opens in VS Code Simple Browser. No API key required.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        port: {
+          type: 'number',
+          description: 'Port for the local HTTP server (default: 8090)',
+        },
+      },
+    },
+  },
 ];
 
 // List tools handler
@@ -272,6 +306,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleGetDependents(args ?? {});
       case 'get_blast_radius':
         return await handleGetBlastRadius(args ?? {});
+      case 'usage_stats':
+        return await handleUsageStats(args ?? {});
+      case 'usage_dashboard':
+        return await handleUsageDashboard(args ?? {});
       default:
         throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
     }
@@ -292,6 +330,9 @@ async function main() {
   autoIndex().catch((err) => {
     console.error('[Stellaris] Background auto-index error:', err.message);
   });
+
+  // Auto-scan usage data in background (no API key needed)
+  autoScanUsage().catch(() => {});
 }
 
 main().catch((error) => {

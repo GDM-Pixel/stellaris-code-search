@@ -1,6 +1,7 @@
 import { findProjectRoot } from './indexer/scanner.js';
 import { runReindex } from './tools/reindex.js';
 import { loadStellarisRc } from './config/stellarisrc.js';
+import { scanUsage, startWatcher } from './usage/scanner.js';
 
 /**
  * Auto-index on startup (non-blocking).
@@ -34,5 +35,18 @@ export async function autoIndex(): Promise<void> {
     }
   } catch (error: any) {
     console.error(`[Stellaris] Auto-index failed (non-fatal): ${error.message}`);
+  }
+}
+
+/**
+ * Scan Claude Code usage data on startup and start the file watcher.
+ * Runs silently in background — no API key required, zero cost.
+ */
+export async function autoScanUsage(): Promise<void> {
+  try {
+    await scanUsage();
+    startWatcher();
+  } catch {
+    // Silent — usage tracking is non-critical
   }
 }

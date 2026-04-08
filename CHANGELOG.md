@@ -1,5 +1,36 @@
 # Changelog
 
+## [3.2.0] - 2026-04-08
+
+### Added
+- **Claude Code usage dashboard** — new `usage_stats` and `usage_dashboard` tools for tracking token consumption and API cost
+  - `usage_stats` — token usage by model/project/day for today, 7d, 30d, or all time. Shows cache read, input/output tokens, estimated API value (what Anthropic absorbs for Max subscribers), and turn count
+  - `usage_dashboard` — launches a local HTTP server (port 8090) with an interactive web dashboard: daily charts, per-session breakdown, model comparison, and cost evolution over 90 days
+  - Nova Mind Cloud visual identity: dark theme, cerise/blue accents, Inter+Poppins fonts
+- **`/nova_usage` prompt** — one-command shortcut that calls `usage_stats`, opens the dashboard, and formats results for Claude Code
+
+### Fixed
+- **Critical: tool_use entries missing from cost calculation** — the unique constraint on `turns` was `(session_id, timestamp, model)` without `stop_reason`. Since `tool_use` and `end_turn` can share the same timestamp, `INSERT OR IGNORE` was silently discarding `tool_use` rows — the entries that carry ~80% of `cache_read_input_tokens`. Fixed by adding `stop_reason` to the unique key
+- **Startup migration deleting tool_use rows** — the previous migration purged all turns with `stop_reason NOT IN ('end_turn', 'stop_sequence')`, destroying cache token data. Now only streaming fragments (null/empty stop_reason) are purged; `tool_use` entries are retained for accurate token accounting
+- **Turn counting inflated** — raw JSONL lines were being counted as turns. Now only `end_turn` and `stop_sequence` lines count as visible turns (via `CASE WHEN` in SQL); `tool_use` lines are stored for token tracking only
+- **Wrong Opus pricing** — `claude-opus-4-6` was priced at $15/$75 (Opus 4-1 rates). Corrected to $5/$25 (Opus 4.x rates)
+
+### Changed
+- **Data retention** — turns older than 180 days are automatically purged at startup. The dashboard shows 90 days max, so data beyond 180 days has no display value. `processed_files` entries are retained to prevent re-scanning old JSONL files
+
+### Architecture
+```
+src/
+  tools/
+    usageStats.ts       # usage_stats MCP tool
+    usageDashboard.ts   # usage_dashboard MCP tool + HTTP server
+  usage/
+    scanner.ts          # JSONL scanner with FileWatcher (incremental)
+    store.ts            # SQLite schema (turns, sessions, processed_files)
+    pricing.ts          # Per-model pricing table (April 2026)
+    dashboard.ts        # HTML/CSS/JS dashboard renderer
+```
+
 ## [3.0.0] - 2026-04-08
 
 ### Added

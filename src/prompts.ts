@@ -54,6 +54,22 @@ export const PROMPTS: PromptDefinition[] = [
     description: 'Review recently modified files and understand their impact. Lists changed files, explores their structure, and identifies what other code may be affected.',
     arguments: [],
   },
+  {
+    name: 'nova_usage',
+    description: 'Show Claude Code token usage statistics and estimated costs. Optionally opens the full dashboard in VS Code.',
+    arguments: [
+      {
+        name: 'period',
+        description: 'Time period: today, 7d, 30d, all (default: today)',
+        required: false,
+      },
+      {
+        name: 'group_by',
+        description: 'Group by: model, project, day (default: model)',
+        required: false,
+      },
+    ],
+  },
 ];
 
 /**
@@ -150,12 +166,30 @@ Start with get_file_tree to orient yourself.`,
       }];
     }
 
+    case 'nova_usage': {
+      const period = args.period ?? 'today';
+      const groupBy = args.group_by ?? 'model';
+      return [{
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Please show my Claude Code token usage statistics using the Stellaris MCP tools:
+
+1. **usage_stats** — Call with period: "${period}" and group_by: "${groupBy}" to get usage statistics
+2. Present the results clearly: tokens consumed, estimated cost, breakdown by ${groupBy}
+3. After showing the stats, offer to open the full dashboard with **usage_dashboard** (opens in VS Code Simple Browser)
+
+Start by calling usage_stats now.`,
+        },
+      }];
+    }
+
     default:
       return [{
         role: 'user',
         content: {
           type: 'text',
-          text: `Unknown prompt: ${name}. Available prompts: nova_explore, nova_find, nova_file, nova_review`,
+          text: `Unknown prompt: ${name}. Available prompts: nova_explore, nova_find, nova_file, nova_review, nova_usage`,
         },
       }];
   }

@@ -15,7 +15,8 @@ Search your codebase with natural language, browse file structures, inspect symb
 - **Hybrid search** (FTS5 + vector embeddings + RRF) — finds exact identifiers *and* semantic concepts
 - **Dependency graph** — resolves imports to real file paths, tracks file→file dependencies
 - **Blast radius analysis** — BFS traversal to find what would break if you change a file
-- **MCP Prompts** — 4 guided workflows (`/nova_explore`, `/nova_find`, `/nova_file`, `/nova_review`)
+- **MCP Prompts** — 5 guided workflows (`/nova_explore`, `/nova_find`, `/nova_file`, `/nova_review`, `/nova_usage`)
+- **Usage dashboard** — tracks Claude Code token consumption and estimated API cost in real time
 - **Auto-reindex hook** — keeps the index fresh automatically after every Write/Edit
 - **AST exploration**: file tree, symbol outlines, source extraction — zero API calls
 - **Context-aware**: imports, sibling symbols, and TODO/FIXME warnings included automatically
@@ -38,7 +39,7 @@ Tested on a real-world Astro project (341 files, 430 chunks indexed):
 
 Stellaris excels at complex multi-file questions (auth flows, payment logic, i18n systems). Grep/Glob remain better for exhaustive file listings. Best strategy: **Stellaris first, Grep/Glob as complement**.
 
-## Tools (10)
+## Tools (12)
 
 ### Semantic search (requires OpenAI API key)
 
@@ -65,6 +66,13 @@ Stellaris excels at complex multi-file questions (auth flows, payment logic, i18
 | `get_dependents` | Files that import a given file (reverse dependencies). |
 | `get_blast_radius` | BFS impact analysis: finds all files transitively affected by changes to a file. Returns severity (LOW/MEDIUM/HIGH) and files grouped by depth. |
 
+### Usage tracking (no API calls)
+
+| Tool | Description |
+|------|-------------|
+| `usage_stats` | Token consumption and estimated API cost by model/project/day. Periods: `today`, `7d`, `30d`, `all`. |
+| `usage_dashboard` | Launches a local web dashboard (port 8090) with interactive charts, session breakdown, and 90-day cost history. |
+
 ## MCP Prompts
 
 Type `/nova` in Claude Code to access guided workflows:
@@ -75,6 +83,7 @@ Type `/nova` in Claude Code to access guided workflows:
 | `/nova_find` | Locate how a feature is implemented (semantic → drill-down) |
 | `/nova_file` | Deep-dive into a specific file — outline + key symbols |
 | `/nova_review` | Review recently changed files and assess their blast radius |
+| `/nova_usage` | Show token consumption stats and open the interactive usage dashboard |
 
 ## Context-aware design
 
@@ -263,7 +272,7 @@ Add to your `claude_desktop_config.json`:
 src/
   index.ts              # MCP entry point, tool + prompt registration
   startup.ts            # Auto-indexing on startup (reads .stellarisrc)
-  prompts.ts            # MCP Prompts definitions (nova_explore, nova_find, ...)
+  prompts.ts            # MCP Prompts definitions (nova_explore, nova_find, nova_usage, ...)
   config/
     defaults.ts         # Extensions, chunking settings, LanceDB config
     loader.ts           # .vectorconfig.json loader
@@ -292,6 +301,13 @@ src/
     getDependencies.ts  # get_dependencies tool
     getDependents.ts    # get_dependents tool
     getBlastRadius.ts   # get_blast_radius tool
+    usageStats.ts       # usage_stats tool
+    usageDashboard.ts   # usage_dashboard tool + HTTP server
+  usage/
+    scanner.ts          # JSONL scanner + FileWatcher (incremental, SQLite-backed)
+    store.ts            # SQLite schema: turns, sessions, processed_files
+    pricing.ts          # Per-model pricing table (April 2026)
+    dashboard.ts        # Interactive HTML dashboard renderer
 scripts/
   reindex-file.mjs      # Hook script for auto-reindex after Write/Edit
 ```
@@ -305,6 +321,8 @@ The index is stored in `.vectors/` at the project root:
 - `.vectors/meta.json` — file meta-index (hashes, chunk IDs, timestamps)
 
 This directory is automatically excluded from scanning.
+
+Usage data is stored globally in `~/.claude/usage.db` (SQLite). Data older than 180 days is automatically purged at startup. The dashboard shows the last 90 days.
 
 ## Development
 
