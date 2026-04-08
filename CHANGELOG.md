@@ -1,5 +1,29 @@
 # Changelog
 
+## [3.3.0] - 2026-04-08
+
+### Added
+- **Index integrity checker** — runs automatically at every startup after `autoIndex`, no API key required
+  - Detects **orphaned chunks**: file paths present in FTS/LanceDB/graph but absent from `meta.json` (caused by crashes mid-reindex or manual edits to `.vectors/`). Purges all 3 stores.
+  - Detects **stale meta entries**: paths in `meta.json` whose source file no longer exists on disk. Removes them so `findChangedFiles()` treats them as deleted on the next reindex.
+  - New `getIndexedFilePaths()` function in `store/fts.ts` used as source of truth for orphan detection
+
+### Fixed (robustness & performance)
+- **Graceful shutdown**: `shutdown()` in `index.ts` now stops the usage watcher, closes the graph SQLite connection (WAL flush), and releases the LanceDB connection handle
+- **Atomic `meta.json` write**: uses `.tmp` → `rename` to prevent index corruption on crash mid-write
+- **Crash-safe reindex**: meta is saved before the embedding pass — a crash during embedding leaves no orphaned old chunks (the integrity checker will catch any residuals)
+- **`getFileOutline` cache**: mtime-based LRU cache (200 entries) — avoids re-reading + re-parsing AST on repeated calls to unchanged files
+- **Usage watcher debounce**: 500ms → 2s to coalesce event bursts on large project trees (1500+ JSONL files)
+- **`strip-json-comments`**: replaces regex-based comment stripping in `graph/resolver.ts` for correct tsconfig.json parsing (handles `//` inside strings, multiline `/* */`)
+- **LanceDB `closeLanceStore()`**: releases connection reference on shutdown
+
+### Architecture
+```
+src/
+  indexer/
+    integrity.ts    # Orphan detection + stale meta cleanup (new)
+```
+
 ## [3.2.0] - 2026-04-08
 
 ### Added

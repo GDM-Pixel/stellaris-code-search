@@ -17,6 +17,7 @@ Search your codebase with natural language, browse file structures, inspect symb
 - **Blast radius analysis** — BFS traversal to find what would break if you change a file
 - **MCP Prompts** — 5 guided workflows (`/nova_explore`, `/nova_find`, `/nova_file`, `/nova_review`, `/nova_usage`)
 - **Usage dashboard** — tracks Claude Code token consumption and estimated API cost in real time
+- **Index integrity checker** — automatically purges orphaned chunks and stale meta entries at every startup
 - **Auto-reindex hook** — keeps the index fresh automatically after every Write/Edit
 - **AST exploration**: file tree, symbol outlines, source extraction — zero API calls
 - **Context-aware**: imports, sibling symbols, and TODO/FIXME warnings included automatically
@@ -308,6 +309,8 @@ src/
     store.ts            # SQLite schema: turns, sessions, processed_files
     pricing.ts          # Per-model pricing table (April 2026)
     dashboard.ts        # Interactive HTML dashboard renderer
+  indexer/
+    integrity.ts        # Startup integrity check: orphan purge + stale meta cleanup
 scripts/
   reindex-file.mjs      # Hook script for auto-reindex after Write/Edit
 ```
@@ -323,6 +326,10 @@ The index is stored in `.vectors/` at the project root:
 This directory is automatically excluded from scanning.
 
 Usage data is stored globally in `~/.claude/usage.db` (SQLite). Data older than 180 days is automatically purged at startup. The dashboard shows the last 90 days.
+
+At every startup, an **integrity check** runs automatically:
+- Orphaned chunks (in LanceDB/FTS/graph but absent from `meta.json`) are purged from all 3 stores
+- Stale `meta.json` entries (source file deleted from disk) are removed so the next reindex handles them correctly
 
 ## Development
 
