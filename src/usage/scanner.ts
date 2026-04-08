@@ -189,7 +189,14 @@ export async function scanUsage(): Promise<ScanResult> {
 let watcher: ReturnType<typeof watch> | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Start watching ~/.claude/projects/ for new/modified JSONL files. */
+/**
+ * Start watching ~/.claude/projects/ for new/modified JSONL files.
+ *
+ * Uses a 2s debounce (vs 500ms) to avoid thrashing on large project trees
+ * (1500+ JSONL files). The recursive watcher fires many events in rapid
+ * succession during active Claude sessions — we coalesce them into a single
+ * scanUsage() call per burst.
+ */
 export function startWatcher(): void {
   if (watcher) return; // Already watching
 
@@ -199,11 +206,11 @@ export function startWatcher(): void {
     watcher = watch(projectsDir, { recursive: true }, (_eventType, filename) => {
       if (!filename || !filename.endsWith('.jsonl')) return;
 
-      // Debounce: wait 500ms after last event before scanning
+      // Debounce: coalesce rapid bursts into a single scan
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         scanUsage().catch(() => {}); // Silent background scan
-      }, 500);
+      }, 2000);
     });
 
     watcher.on('error', () => {
@@ -217,7 +224,10 @@ export function startWatcher(): void {
 
 /** Stop the file watcher. */
 export function stopWatcher(): void {
-  if (debounceTimer) clearTimeout(debounceTimer);
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
   if (watcher) {
     watcher.close();
     watcher = null;

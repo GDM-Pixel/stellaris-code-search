@@ -31,6 +31,15 @@ export async function connectStore(projectRoot: string): Promise<lancedb.Connect
 }
 
 /**
+ * Close the LanceDB connection cleanly (call on SIGTERM/SIGINT).
+ */
+export function closeLanceStore(): void {
+  // LanceDB Connection doesn't expose a close() method in the JS SDK,
+  // but releasing the reference allows GC to clean up open handles.
+  db = null;
+}
+
+/**
  * Get or create the code_chunks table
  */
 async function getTable(connection: lancedb.Connection): Promise<lancedb.Table> {

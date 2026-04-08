@@ -5,6 +5,7 @@
 
 import { existsSync, statSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve, relative } from 'node:path';
+import stripJsonComments from 'strip-json-comments';
 
 /**
  * Supported extensions to try when resolving imports without explicit extension.
@@ -178,8 +179,8 @@ function loadTSPaths(projectRoot: string): void {
 
     try {
       const raw = readFileSync(configPath, 'utf-8');
-      // Strip comments (simple approach for JSON with comments)
-      const cleaned = raw.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+      // strip-json-comments handles // and /* */ correctly, including inside strings
+      const cleaned = stripJsonComments(raw);
       const config = JSON.parse(cleaned);
 
       if (config.compilerOptions?.paths) {

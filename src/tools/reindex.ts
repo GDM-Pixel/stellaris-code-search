@@ -56,7 +56,13 @@ export async function runReindex(projectRoot: string): Promise<{
     }
   }
 
-  // Embed all chunks
+  // Embed all chunks — save meta BEFORE embedding so a crash mid-embed
+  // doesn't leave the index with orphaned old chunks and no meta entry.
+  // On restart, missing meta entries will be re-chunked and re-embedded.
+  if (changed.deleted.length > 0 || changed.modified.length > 0) {
+    await saveMetaIndex(projectRoot, meta);
+  }
+
   let embedded;
   if (allChunks.length > 0) {
     console.error(`[Stellaris] Embedding ${allChunks.length} chunks from ${filesToProcess.length} files...`);
@@ -74,7 +80,7 @@ export async function runReindex(projectRoot: string): Promise<{
       line_end: c.line_end,
     })));
 
-    // Update meta index
+    // Update meta index with new chunk IDs and hashes
     for (const chunk of embedded) {
       if (!meta[chunk.file_path]) {
         const file = filesToProcess.find((f) => f.relativePath === chunk.file_path);

@@ -36,6 +36,7 @@
     "fast-glob": "^3.3.3",
     "ignore": "^7.0.3",
     "openai": "^4.78.0",
+    "strip-json-comments": "^5.0.3",
     "tree-sitter": "^0.21.1",
     "tree-sitter-css": "^0.23.2",
     "tree-sitter-go": "^0.23.4",

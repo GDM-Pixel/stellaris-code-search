@@ -25,6 +25,8 @@ import { handleUsageDashboard } from './tools/usageDashboard.js';
 import { autoIndex, autoScanUsage } from './startup.js';
 import { PROMPTS, getPromptMessages } from './prompts.js';
 import { closeGraphStore } from './graph/store.js';
+import { closeLanceStore } from './store/lancedb.js';
+import { stopWatcher } from './usage/scanner.js';
 
 // Warn if OPENAI_API_KEY is missing (semantic search won't work, but AST tools will)
 if (!process.env.OPENAI_API_KEY) {
@@ -341,9 +343,11 @@ main().catch((error) => {
   process.exit(1);
 });
 
-// Graceful shutdown: close SQLite connections to flush WAL
+// Graceful shutdown: stop watchers and close all DB connections
 function shutdown() {
-  closeGraphStore();
+  stopWatcher();       // stop fs.watch on ~/.claude/projects
+  closeGraphStore();   // flush graph SQLite WAL
+  closeLanceStore();   // release LanceDB connection handle
   process.exit(0);
 }
 process.on('SIGTERM', shutdown);

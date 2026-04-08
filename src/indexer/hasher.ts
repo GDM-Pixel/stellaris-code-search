@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FileInfo } from './scanner.js';
 
@@ -40,7 +40,12 @@ export async function loadMetaIndex(projectRoot: string): Promise<MetaIndex> {
 export async function saveMetaIndex(projectRoot: string, meta: MetaIndex): Promise<void> {
   const dir = join(projectRoot, '.vectors');
   await mkdir(dir, { recursive: true });
-  await writeFile(metaPath(projectRoot), JSON.stringify(meta, null, 2), 'utf-8');
+
+  // Atomic write: write to .tmp then rename to avoid corrupt meta.json on crash mid-write
+  const target = metaPath(projectRoot);
+  const tmp = target + '.tmp';
+  await writeFile(tmp, JSON.stringify(meta, null, 2), 'utf-8');
+  await rename(tmp, target);
 }
 
 /**
