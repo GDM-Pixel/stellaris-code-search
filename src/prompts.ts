@@ -70,6 +70,22 @@ export const PROMPTS: PromptDefinition[] = [
       },
     ],
   },
+  {
+    name: 'nova_db',
+    description: 'Explore the project database schema. Shows tables, columns, types, relationships, and RLS policies. Refreshes the schema snapshot if needed. Use before any DB query to understand the data model.',
+    arguments: [
+      {
+        name: 'table',
+        description: 'Optional: specific table to focus on (e.g., "articles", "profiles")',
+        required: false,
+      },
+      {
+        name: 'query',
+        description: 'Optional: concept to search for (e.g., "image generation settings", "user permissions")',
+        required: false,
+      },
+    ],
+  },
 ];
 
 /**
@@ -184,12 +200,35 @@ Start by calling usage_stats now.`,
       }];
     }
 
+    case 'nova_db': {
+      const table = args.table ?? '';
+      const query = args.query ?? '';
+      const focus = table ? ` focused on the "${table}" table` : query ? ` related to "${query}"` : '';
+      return [{
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Please explore the database schema of this project${focus} using the Stellaris DB tools:
+
+1. **db_schema** — Read the schema snapshot${table ? ` with table: "${table}"` : ''}. If it returns "No snapshot found", run db_snapshot first.
+${query ? `2. **db_search** — Search for "${query}" to find relevant tables and columns.\n` : ''}${table ? `2. **db_schema** — Show the full column details, foreign keys, and RLS policies for "${table}".\n` : ''}
+Explain:
+- What tables exist and what data they store
+- The relationships between tables (foreign keys)
+- Which columns are most relevant${focus ? ` to ${table || query}` : ''}
+- Any RLS policies that control data access
+
+If the snapshot is missing or stale (>24h), call db_snapshot first to refresh it.`,
+        },
+      }];
+    }
+
     default:
       return [{
         role: 'user',
         content: {
           type: 'text',
-          text: `Unknown prompt: ${name}. Available prompts: nova_explore, nova_find, nova_file, nova_review, nova_usage`,
+          text: `Unknown prompt: ${name}. Available prompts: nova_explore, nova_find, nova_file, nova_review, nova_usage, nova_db`,
         },
       }];
   }

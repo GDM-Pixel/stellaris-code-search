@@ -22,7 +22,10 @@ import { handleGetDependents } from './tools/getDependents.js';
 import { handleGetBlastRadius } from './tools/getBlastRadius.js';
 import { handleUsageStats } from './tools/usageStats.js';
 import { handleUsageDashboard } from './tools/usageDashboard.js';
-import { autoIndex, autoScanUsage } from './startup.js';
+import { handleDbSchema } from './tools/dbSchema.js';
+import { handleDbSearch } from './tools/dbSearch.js';
+import { handleDbSnapshot } from './tools/dbSnapshot.js';
+import { autoIndex, autoScanUsage, autoDbSnapshot } from './startup.js';
 import { PROMPTS, getPromptMessages } from './prompts.js';
 import { closeGraphStore } from './graph/store.js';
 import { closeLanceStore } from './store/lancedb.js';
@@ -36,7 +39,7 @@ if (!process.env.OPENAI_API_KEY) {
 const server = new Server(
   {
     name: 'stellaris-mcp',
-    version: '3.1.0',
+    version: '3.4.0',
   },
   {
     capabilities: {
@@ -261,6 +264,77 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'db_snapshot',
+    description: 'Introspect a database and save a local schema snapshot to .vectors/db-schema.json. Connects to the DB via a connection string (PostgreSQL supported), or falls back to parsing local schema files (prisma/schema.prisma, database.types.ts). Run this once before using db_schema or db_search.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        connection_string: {
+          type: 'string',
+          description: 'Database connection URL (e.g., postgresql://user:pass@host:5432/db). If omitted, reads DB_CONNECTION_STRING or DATABASE_URL env vars, or falls back to local ORM file parsing.',
+        },
+        provider: {
+          type: 'string',
+          enum: ['postgres', 'mysql', 'sqlite', 'auto'],
+          description: 'Database provider. Default: auto (detected from connection string).',
+        },
+        schemas: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'DB schemas to introspect (default: ["public"]). Supabase users may want ["public", "auth"].',
+        },
+        save_connection: {
+          type: 'boolean',
+          description: 'Save the connection string to .stellarisrc for future startup auto-snapshot (default: false). The .stellarisrc file is gitignored.',
+        },
+      },
+    },
+  },
+  {
+    name: 'db_schema',
+    description: 'Read the local database schema snapshot. Returns tables, columns, types, primary keys, foreign keys, indexes, enums, and RLS policies. No DB connection needed — reads from .vectors/db-schema.json. Run db_snapshot first to create or refresh the snapshot.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        table: {
+          type: 'string',
+          description: 'Filter output to a specific table name (e.g. "articles" or "public.articles"). Returns all tables if omitted.',
+        },
+        format: {
+          type: 'string',
+          enum: ['compact', 'full', 'sql'],
+          description: 'Output format: compact (default, human-readable summary), full (complete JSON), sql (CREATE TABLE DDL).',
+        },
+        include_indexes: {
+          type: 'boolean',
+          description: 'Include index definitions in output (default: true)',
+        },
+        include_policies: {
+          type: 'boolean',
+          description: 'Include RLS policies in output (default: true)',
+        },
+      },
+    },
+  },
+  {
+    name: 'db_search',
+    description: 'Search the database schema by natural language query. Finds tables and columns matching a concept (e.g. "user permissions", "image generation prompts", "article cover"). No DB connection needed — searches the local snapshot.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Natural language query (e.g. "tables related to authentication", "columns storing timestamps", "cover image generation settings")',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results to return (default: 10)',
+        },
+      },
+      required: ['query'],
+    },
+  },
 ];
 
 // List tools handler
@@ -313,6 +387,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleUsageStats(args ?? {});
       case 'usage_dashboard':
         return await handleUsageDashboard(args ?? {});
+      case 'db_snapshot':
+        return await handleDbSnapshot(args ?? {});
+      case 'db_schema':
+        return await handleDbSchema(args ?? {});
+      case 'db_search':
+        return await handleDbSearch(args ?? {});
       default:
         throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
     }
@@ -336,6 +416,11 @@ async function main() {
 
   // Auto-scan usage data in background (no API key needed)
   autoScanUsage().catch(() => {});
+
+  // Auto-snapshot DB schema in background if configured
+  autoDbSnapshot().catch((err) => {
+    console.error('[Stellaris DB] Background auto-snapshot error:', err.message);
+  });
 }
 
 main().catch((error) => {

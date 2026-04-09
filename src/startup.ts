@@ -3,6 +3,7 @@ import { runReindex } from './tools/reindex.js';
 import { loadStellarisRc } from './config/stellarisrc.js';
 import { scanUsage, startWatcher } from './usage/scanner.js';
 import { checkIntegrity } from './indexer/integrity.js';
+import { runDbSnapshot } from './db/snapshot.js';
 
 /**
  * Auto-index on startup (non-blocking).
@@ -48,6 +49,39 @@ export async function autoIndex(): Promise<void> {
     await checkIntegrity(projectRoot);
   } catch (error: any) {
     console.error(`[Stellaris] Auto-index failed (non-fatal): ${error.message}`);
+  }
+}
+
+/**
+ * Auto-snapshot DB schema on startup (non-blocking).
+ * Only runs if .stellarisrc has db_auto_snapshot=true, or if DB_CONNECTION_STRING / DATABASE_URL
+ * env var is set. Falls back to local file parsing if no connection string is available.
+ */
+export async function autoDbSnapshot(): Promise<void> {
+  try {
+    const projectRoot = findProjectRoot(process.cwd());
+    const rc = await loadStellarisRc(projectRoot);
+
+    const hasEnvConn = !!(process.env.DB_CONNECTION_STRING || process.env.DATABASE_URL);
+    const hasRcConn = !!rc.db_connection_string;
+
+    if (!rc.db_auto_snapshot && !hasEnvConn) {
+      return; // Silent — auto-snapshot not configured
+    }
+
+    console.error('[Stellaris DB] Auto-snapshotting database schema...');
+
+    const result = await runDbSnapshot(projectRoot, {
+      connectionString: rc.db_connection_string,
+      provider: rc.db_provider,
+      schemas: rc.db_schemas,
+    });
+
+    console.error(
+      `[Stellaris DB] Auto-snapshot complete: ${result.tables} tables, ${result.enums} enums (${result.source})`,
+    );
+  } catch (error: any) {
+    console.error(`[Stellaris DB] Auto-snapshot failed (non-fatal): ${error.message}`);
   }
 }
 
