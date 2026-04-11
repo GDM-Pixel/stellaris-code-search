@@ -889,37 +889,42 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
     elPaneCode.innerHTML = '<div class="panel-spinner"><div class="spinner"></div></div>';
 
     var xhrCode = new XMLHttpRequest();
-    xhrCode.open('GET', API_BASE + '/file-content?file=' + encodeURIComponent(nodeId), true);
+    xhrCode.open('GET', API_BASE + '/api/file-source?file=' + encodeURIComponent(nodeId), true);
     xhrCode.onload = function() {
       if (xhrCode.status === 200) {
-        var content = xhrCode.responseText;
-        var pre = document.createElement('pre');
-        var code = document.createElement('code');
-        code.textContent = content;
-        pre.appendChild(code);
-        var wrap = document.createElement('div');
-        wrap.className = 'code-wrap';
-        wrap.appendChild(pre);
-        elPaneCode.innerHTML = '';
-        elPaneCode.appendChild(wrap);
-        if (window.hljs) {
-          try { hljs.highlightElement(code); } catch(e) {}
-        }
+        try {
+          var resp = JSON.parse(xhrCode.responseText);
+          var content = resp.content || '';
+          var pre = document.createElement('pre');
+          var code = document.createElement('code');
+          code.textContent = content;
+          pre.appendChild(code);
+          var wrap = document.createElement('div');
+          wrap.className = 'code-wrap';
+          wrap.appendChild(pre);
+          elPaneCode.innerHTML = '';
+          elPaneCode.appendChild(wrap);
+          if (window.hljs) {
+            try { hljs.highlightElement(code); } catch(e) {}
+          }
+        } catch(e) { elPaneCode.innerHTML = '<div class="fp-empty">Could not load file.</div>'; }
       }
     };
     xhrCode.send();
 
     elPaneSymbols.innerHTML = '';
     var xhrSymbols = new XMLHttpRequest();
-    xhrSymbols.open('GET', API_BASE + '/file-symbols?file=' + encodeURIComponent(nodeId), true);
+    xhrSymbols.open('GET', API_BASE + '/api/file-outline?file=' + encodeURIComponent(nodeId), true);
     xhrSymbols.onload = function() {
       if (xhrSymbols.status === 200) {
         try {
-          var symbols = JSON.parse(xhrSymbols.responseText);
+          var resp = JSON.parse(xhrSymbols.responseText);
+          var symbols = resp.symbols || [];
           var list = document.createElement('div');
           list.className = 'symbol-list';
-          if (!symbols || symbols.length === 0) {
-            list.innerHTML = '<div class="fp-empty">No symbols found</div>';
+          if (symbols.length === 0) {
+            var empty = document.createElement('div'); empty.className = 'fp-empty'; empty.textContent = 'No symbols found';
+            list.appendChild(empty);
           } else {
             symbols.forEach(function(s) {
               var item = document.createElement('div');
@@ -932,13 +937,14 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
               name.textContent = s.name || '?';
               var lines = document.createElement('span');
               lines.className = 'symbol-lines';
-              lines.textContent = s.lines ? s.lines.join('-') : '';
+              lines.textContent = s.lines || '';
               item.appendChild(kind);
               item.appendChild(name);
               item.appendChild(lines);
               list.appendChild(item);
             });
           }
+          elPaneSymbols.innerHTML = '';
           elPaneSymbols.appendChild(list);
         } catch(e) {
           elPaneSymbols.innerHTML = '<div class="fp-empty">Error parsing symbols</div>';
@@ -948,35 +954,39 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
     xhrSymbols.send();
 
     elPaneImports.innerHTML = '';
-    var xhrImports = new XMLHttpRequest();
-    xhrImports.open('GET', API_BASE + '/file-imports?file=' + encodeURIComponent(nodeId), true);
-    xhrImports.onload = function() {
-      if (xhrImports.status === 200) {
-        try {
-          var imports = JSON.parse(xhrImports.responseText);
-          var list = document.createElement('div');
-          list.className = 'dep-list';
-          if (!imports || imports.length === 0) {
-            list.innerHTML = '<div class="fp-empty">No imports found</div>';
-          } else {
-            imports.forEach(function(imp) {
-              var item = document.createElement('div');
-              item.className = 'dep-item';
-              item.textContent = imp;
-              item.addEventListener('click', function() {
-                var target = allNodes.find(function(n) { return n.id === imp; });
-                if (target) openFilePanel(imp);
-              });
-              list.appendChild(item);
-            });
-          }
-          elPaneImports.appendChild(list);
-        } catch(e) {
-          elPaneImports.innerHTML = '<div class="fp-empty">Error parsing imports</div>';
-        }
+    (function() {
+      var deps = [], rdeps = [];
+      allLinks.forEach(function(l) {
+        var src = typeof l.source === 'string' ? l.source : (l.source && l.source.id);
+        var tgt = typeof l.target === 'string' ? l.target : (l.target && l.target.id);
+        if (src === nodeId) deps.push(tgt);
+        if (tgt === nodeId) rdeps.push(src);
+      });
+      function makeDepList(ids, title) {
+        if (ids.length === 0) return null;
+        var sec = document.createElement('div'); sec.className = 'panel-section'; sec.style.cssText = 'padding:10px 14px 0';
+        var t = document.createElement('div'); t.className = 'panel-section-title'; t.textContent = title + ' (' + ids.length + ')';
+        sec.appendChild(t);
+        var list = document.createElement('div'); list.className = 'dep-list';
+        ids.forEach(function(id) {
+          var parts = id.replace(/\\\\/g, '/').split('/');
+          var it = document.createElement('div'); it.className = 'dep-item'; it.title = id; it.textContent = parts[parts.length-1];
+          it.addEventListener('click', function() { openFilePanel(id); });
+          list.appendChild(it);
+        });
+        sec.appendChild(list);
+        return sec;
       }
-    };
-    xhrImports.send();
+      var outSec = makeDepList(deps, 'Imports');
+      var inSec = makeDepList(rdeps, 'Imported by');
+      if (!outSec && !inSec) {
+        var e = document.createElement('div'); e.className = 'fp-empty'; e.textContent = 'No import edges found.';
+        elPaneImports.appendChild(e);
+      } else {
+        if (outSec) elPaneImports.appendChild(outSec);
+        if (inSec) elPaneImports.appendChild(inSec);
+      }
+    })();
 
     elPanel.classList.remove('hidden');
     highlightNodes.clear();
@@ -995,7 +1005,7 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
   }
 
   function initGraph(apiBase) {
-    var GRAPH_DB_URL = apiBase + '/graph-db';
+    var GRAPH_DB_URL = apiBase + '/api/data';
     var xhr = new XMLHttpRequest();
     xhr.open('GET', GRAPH_DB_URL, true);
     xhr.responseType = 'json';
@@ -1008,7 +1018,7 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
       var gdata = xhr.response;
       allNodes = gdata.nodes || [];
       allLinks = gdata.links || [];
-      projectRoot = gdata.projectRoot || '';
+      projectRoot = gdata.project_root || '';
 
       allNodes.forEach(function(n) {
         n.size = 4;
