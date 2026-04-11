@@ -318,6 +318,17 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
     return h;
   }
 
+  function hslToHex(h, s, l) {
+    s /= 100; l /= 100;
+    var a = s * Math.min(l, 1 - l);
+    function f(n) {
+      var k = (n + h / 30) % 12;
+      var color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+      return Math.round(255 * color).toString(16).padStart(2, '0');
+    }
+    return '#' + f(0) + f(8) + f(4);
+  }
+
   function lerpColor(c1, c2, t) {
     var r1 = parseInt(c1.slice(1,3), 16);
     var g1 = parseInt(c1.slice(3,5), 16);
@@ -771,13 +782,18 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
   }
 
   function nodeColorFunc(n) {
+    // Folder highlight: dim nodes outside selected folder
+    if (highlightFolder && n.id.indexOf(highlightFolder) !== 0) return '#1e2535';
+    // Hover highlight
+    if (highlightNodes.size > 0 && !highlightNodes.has(n.id)) return '#1e2535';
+
     if (viewMode === 'language') {
       var ext = n.id.substring(n.id.lastIndexOf('.'));
       return langColor(ext);
     } else if (viewMode === 'directory') {
       var dir = n.directory || '';
       var hue = (hashStr(dir) * 137) % 360;
-      return 'hsl(' + hue + ', 65%, 55%)';
+      return hslToHex(hue, 65, 55);
     } else if (viewMode === 'degree') {
       var deg = (n.in_degree || 0) + (n.out_degree || 0);
       var t = degreeMax > 0 ? deg / degreeMax : 0;
@@ -822,9 +838,9 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
     if (!graph) return;
     graph
       .nodeColor(nodeColorFunc)
-      .nodeOpacity(function(n) { return nodeOpacity(n); })
+      .nodeOpacity(0.92)
       .linkColor(linkColorFunc)
-      .linkWidth(function(l) { return (l.width || 1) * edgeWidthMult; });
+      .linkWidth(function(l) { return highlightLinks.has(l.id) ? 1.5 * edgeWidthMult : 0.5 * edgeWidthMult; });
   }
 
   function renderGraph() {
@@ -1069,7 +1085,7 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
         .nodeId('id')
         .nodeLabel(function(n) { return n.label + '  in:' + n.in_degree + '  out:' + n.out_degree; })
         .nodeColor(nodeColorFunc)
-        .nodeOpacity(function(n) { return nodeOpacity(n); })
+        .nodeOpacity(0.92)
         .nodeVal(function(n) { return Math.max(1, Math.min(8, 1 + ((n.in_degree||0)+(n.out_degree||0))*0.5)) * nodeSizeMult; })
         .linkColor(linkColorFunc)
         .linkOpacity(0.6)
