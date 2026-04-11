@@ -288,15 +288,45 @@ export function extractImports(rootNode: Parser.SyntaxNode, extension: string): 
  * Extract raw import strings from a file (convenience wrapper).
  * Used by the graph builder to feed the import resolver.
  */
+/**
+ * Regex-based import extraction for files without a tree-sitter parser
+ * (.astro, .vue, .svelte, .mdx, etc.).
+ */
+function extractImportsRegex(content: string): string[] {
+  const results: string[] = [];
+
+  // For .astro files: only scan inside the frontmatter block (between --- delimiters)
+  let scanContent = content;
+  const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (frontmatterMatch) {
+    scanContent = frontmatterMatch[1];
+  }
+
+  // Static imports: import X from '...' or import '...'
+  const staticRe = /\bimport\s+(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;
+  let m: RegExpExecArray | null;
+  while ((m = staticRe.exec(scanContent)) !== null) {
+    results.push(m[1]);
+  }
+  // Dynamic imports: import('...')
+  const dynRe = /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+  while ((m = dynRe.exec(scanContent)) !== null) {
+    results.push(m[1]);
+  }
+  return [...new Set(results)];
+}
+
 export function extractFileImports(content: string, extension: string): string[] {
   const config = LANGUAGE_CONFIGS[extension];
-  if (!config) return [];
+  const parser = config ? getParser(extension) : null;
 
-  const parser = getParser(extension);
-  if (!parser) return [];
+  if (parser) {
+    const tree = parser.parse(content);
+    return extractImports(tree.rootNode, extension);
+  }
 
-  const tree = parser.parse(content);
-  return extractImports(tree.rootNode, extension);
+  // Fallback: regex-based extraction for .astro, .vue, .svelte, .mdx, etc.
+  return extractImportsRegex(content);
 }
 
 function extractExportNames(rootNode: Parser.SyntaxNode, config: LanguageConfig): string[] {

@@ -4,6 +4,7 @@
 
 import { extname, basename, relative } from 'node:path';
 import { getAllEdges } from './store.js';
+import { loadMetaIndex } from '../indexer/hasher.js';
 
 export interface GraphNode {
   id: string;           // relative file path (key)
@@ -34,15 +35,25 @@ export interface GraphData {
 }
 
 /**
- * Build the full graph data structure from graph.db edges.
+ * Build the full graph data structure from graph.db edges + meta.json indexed files.
+ * Files without any edges (isolated nodes) are included from meta.json so the graph
+ * shows the full picture of the indexed codebase.
  */
 export async function buildGraphData(projectRoot: string): Promise<GraphData> {
-  const edges = await getAllEdges(projectRoot);
+  const [edges, meta] = await Promise.all([
+    getAllEdges(projectRoot),
+    loadMetaIndex(projectRoot),
+  ]);
 
   // Collect unique file paths and compute degrees
   const inDegree = new Map<string, number>();
   const outDegree = new Map<string, number>();
   const nodeSet = new Set<string>();
+
+  // Add all indexed files from meta.json (relative paths)
+  for (const relPath of Object.keys(meta)) {
+    nodeSet.add(relPath);
+  }
 
   for (const edge of edges) {
     nodeSet.add(edge.source_file);
