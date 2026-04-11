@@ -1062,18 +1062,38 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
 
       elLoading.style.display = 'none';
 
-      var container = document.getElementById('graph-container');
+      var container = document.getElementById('graph-canvas');
       graph = ForceGraph3D()(container)
+        .backgroundColor('#0d111c')
         .graphData(getFilteredData())
-        .nodeLabel(function(n) { return n.id; })
+        .nodeId('id')
+        .nodeLabel(function(n) { return n.label + '  in:' + n.in_degree + '  out:' + n.out_degree; })
         .nodeColor(nodeColorFunc)
         .nodeOpacity(function(n) { return nodeOpacity(n); })
-        .nodeVal(function(n) { return (n.size || 4) * nodeSizeMult; })
+        .nodeVal(function(n) { return Math.max(1, Math.min(8, 1 + ((n.in_degree||0)+(n.out_degree||0))*0.5)) * nodeSizeMult; })
         .linkColor(linkColorFunc)
-        .linkWidth(function(l) { return (l.width || 1) * edgeWidthMult; })
-        .linkDirectionalArrowLength(4)
+        .linkOpacity(0.6)
+        .linkWidth(function(l) { return highlightLinks.has(l.id) ? 1.5 * edgeWidthMult : 0.5 * edgeWidthMult; })
+        .linkDirectionalArrowLength(3)
         .linkDirectionalArrowRelPos(1)
-        .onNodeClick(function(n) { openFilePanel(n.id); });
+        .linkDirectionalArrowColor(function() { return '#4a5568'; })
+        .onNodeHover(function(node) {
+          highlightNodes.clear(); highlightLinks.clear();
+          if (node) {
+            highlightNodes.add(node.id);
+            graph.graphData().links.forEach(function(l) {
+              var src = typeof l.source === 'object' ? l.source.id : l.source;
+              var tgt = typeof l.target === 'object' ? l.target.id : l.target;
+              if (src === node.id || tgt === node.id) {
+                highlightLinks.add(l.id);
+                highlightNodes.add(src);
+                highlightNodes.add(tgt);
+              }
+            });
+          }
+          refreshColors();
+        })
+        .onNodeClick(function(n) { selectedNode = n.id; refreshColors(); openFilePanel(n.id); });
 
       renderGraph();
     };
