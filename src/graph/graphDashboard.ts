@@ -93,8 +93,10 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent2); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .overlay-text { color: var(--text-muted); font-size: 13px; }
-.file-panel { width: 420px; min-width: 380px; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
+.file-panel { width: 420px; min-width: 280px; max-width: 80vw; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; position: relative; }
 .file-panel.hidden { width: 0; min-width: 0; overflow: hidden; border: none; }
+.fp-resize-handle { position: absolute; left: 0; top: 0; bottom: 0; width: 5px; cursor: col-resize; z-index: 10; background: transparent; transition: background .15s; }
+.fp-resize-handle:hover, .fp-resize-handle.dragging { background: var(--accent2); opacity: 0.5; }
 .file-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; gap: 8px; }
 .file-panel-title { font-size: 12px; font-weight: 600; font-family: var(--mono); word-break: break-all; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .close-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px; flex-shrink: 0; }
@@ -184,6 +186,7 @@ function getBodyHtml(): string {
       </div>
     </div>
     <div class="file-panel hidden" id="file-panel">
+      <div class="fp-resize-handle" id="fp-resize"></div>
       <div class="file-panel-header">
         <span class="file-panel-title" id="fp-title">&mdash;</span>
         <a class="open-btn" id="fp-vscode" href="#" title="Open in VS Code" style="font-size:11px;padding:5px 10px">&#x2756; VS Code</a>
@@ -535,6 +538,35 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
   });
   elToggleNm.addEventListener('change', function() { hideNm=elToggleNm.checked; renderGraph(); });
   elFpClose.addEventListener('click', function() { elPanel.classList.add('hidden'); selectedNode=null; if(graph)refreshColors(); });
+
+  // Resize handle for file panel
+  var elResize = document.getElementById('fp-resize');
+  var resizing = false;
+  var resizeStartX = 0;
+  var resizeStartW = 0;
+  elResize.addEventListener('mousedown', function(e) {
+    resizing = true;
+    resizeStartX = e.clientX;
+    resizeStartW = elPanel.offsetWidth;
+    elResize.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (!resizing) return;
+    var delta = resizeStartX - e.clientX;
+    var newW = Math.max(280, Math.min(window.innerWidth * 0.8, resizeStartW + delta));
+    elPanel.style.width = newW + 'px';
+  });
+  document.addEventListener('mouseup', function() {
+    if (!resizing) return;
+    resizing = false;
+    elResize.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+
   loadData();
 })();`;
 }
