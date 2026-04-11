@@ -123,7 +123,19 @@ function tryResolveAlias(importStr: string, projectRoot: string): string | null 
  */
 function tryResolveFile(absolutePath: string, projectRoot: string): string | null {
   // Normalize path separators
-  const normalized = absolutePath.replace(/\\/g, '/');
+  let normalized = absolutePath.replace(/\\/g, '/');
+
+  // ESM-style imports use .js extension but source files are .ts/.tsx
+  // Remap: .js → .ts, .jsx → .tsx (TypeScript projects)
+  if (normalized.endsWith('.js')) {
+    const asTsx = normalized.slice(0, -3) + '.tsx';
+    const asTs = normalized.slice(0, -3) + '.ts';
+    if (existsSync(asTs)) return toRelative(asTs, projectRoot);
+    if (existsSync(asTsx)) return toRelative(asTsx, projectRoot);
+  } else if (normalized.endsWith('.jsx')) {
+    const asTsx = normalized.slice(0, -4) + '.tsx';
+    if (existsSync(asTsx)) return toRelative(asTsx, projectRoot);
+  }
 
   // 1. Exact match (path already has extension)
   if (existsSync(normalized)) {
