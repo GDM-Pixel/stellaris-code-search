@@ -136,6 +136,22 @@ export async function getGraphStats(projectRoot: string): Promise<{
 }
 
 /**
+ * Get all edges in the graph (used for full-graph visualization).
+ */
+export async function getAllEdges(projectRoot: string): Promise<DependencyEdge[]> {
+  const conn = await connectGraph(projectRoot);
+  const rows = conn.prepare(
+    'SELECT source_file, target_file, import_names FROM edges'
+  ).all() as { source_file: string; target_file: string; import_names: string }[];
+
+  return rows.map(r => ({
+    source_file: r.source_file,
+    target_file: r.target_file,
+    import_names: JSON.parse(r.import_names),
+  }));
+}
+
+/**
  * Close the graph DB connection cleanly (call on SIGTERM/SIGINT).
  */
 export function closeGraphStore(): void {

@@ -1,5 +1,31 @@
 # Changelog
 
+## [3.5.0] - 2026-04-11
+
+### Added
+- **Graph View 3D** — new `graph_view` MCP tool launching a local HTTP server (port 8091) with an interactive 3D dependency graph visualization
+  - Files rendered as colored spheres grouped by language (TypeScript blue, Python blue-green, Go cyan, Rust orange, Vue green, etc.)
+  - Directed edges with arrows showing import direction
+  - **Hover**: highlights neighboring nodes and edges, tooltip shows in/out-degree
+  - **Click**: opens a file detail panel with in/out-degree, list of imports (clickable to navigate), symbol outline (via AST), and "Open in VS Code" button (`vscode://file/...`)
+  - **Sidebar filters**: search by filename (BFS subgraph focus with adjustable depth 1–5), hide node_modules toggle, per-extension toggles with language colors
+  - Node size proportional to total degree (min 1, max 8)
+  - Dark theme Nova Mind (same visual identity as usage_dashboard)
+  - Reuses existing `graph.db` — zero extra indexing required
+
+### Architecture
+```
+src/
+  graph/
+    export.ts          # getAllEdges → {nodes, links, stats} with in/out-degree per node
+    graphDashboard.ts  # HTML/CSS/JS template (3d-force-graph CDN, ~430 lines)
+  tools/
+    graphView.ts       # graph_view handler + HTTP server (routes: /, /api/data, /api/file-outline)
+```
+
+### Dependencies
+- `3d-force-graph@1.73.3` loaded via CDN (Three.js bundled) — no new npm dependency
+
 ## [3.4.0] - 2026-04-09
 
 ### Added

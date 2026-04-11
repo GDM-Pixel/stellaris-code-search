@@ -25,6 +25,7 @@ import { handleUsageDashboard } from './tools/usageDashboard.js';
 import { handleDbSchema } from './tools/dbSchema.js';
 import { handleDbSearch } from './tools/dbSearch.js';
 import { handleDbSnapshot } from './tools/dbSnapshot.js';
+import { handleGraphView, stopGraphServer } from './tools/graphView.js';
 import { autoIndex, autoScanUsage, autoDbSnapshot } from './startup.js';
 import { PROMPTS, getPromptMessages } from './prompts.js';
 import { closeGraphStore } from './graph/store.js';
@@ -39,7 +40,7 @@ if (!process.env.OPENAI_API_KEY) {
 const server = new Server(
   {
     name: 'stellaris-mcp',
-    version: '3.4.0',
+    version: '3.5.0',
   },
   {
     capabilities: {
@@ -335,6 +336,19 @@ const TOOLS = [
       required: ['query'],
     },
   },
+  {
+    name: 'graph_view',
+    description: 'Launch a 3D interactive visualization of the project dependency graph. Shows files as colored nodes (by language) connected by import edges. Supports filtering by file type, focusing on a specific file neighborhood, and clicking nodes to inspect file details and open them in VS Code. Requires a prior reindex to build the dependency graph. Opens in VS Code Simple Browser.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        port: {
+          type: 'number',
+          description: 'Port for the local HTTP server (default: 8091)',
+        },
+      },
+    },
+  },
 ];
 
 // List tools handler
@@ -393,6 +407,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleDbSchema(args ?? {});
       case 'db_search':
         return await handleDbSearch(args ?? {});
+      case 'graph_view':
+        return await handleGraphView(args ?? {});
       default:
         throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
     }
@@ -433,6 +449,7 @@ function shutdown() {
   stopWatcher();       // stop fs.watch on ~/.claude/projects
   closeGraphStore();   // flush graph SQLite WAL
   closeLanceStore();   // release LanceDB connection handle
+  stopGraphServer();   // close graph view HTTP server
   process.exit(0);
 }
 process.on('SIGTERM', shutdown);
