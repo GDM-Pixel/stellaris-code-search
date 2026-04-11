@@ -1,5 +1,41 @@
 # Changelog
 
+## [3.6.0] - 2026-04-11
+
+### Added
+- **5 new MCP tools** for deep graph analysis:
+  - `get_circular_deps` — Tarjan's SCC algorithm to detect all circular dependency cycles
+  - `get_dead_code` — identifies files never imported by others (unreferenced code candidates)
+  - `get_topological_order` — Kahn's algorithm to order files for safe sequential refactoring
+  - `simulate_move` — computes the full import migration plan before moving/renaming a file
+  - `get_most_coupled` — ranks files by combined in+out degree to identify coupling hotspots
+
+- **Graph View 3D dashboard v2** — major sidebar and controls update:
+  - **Left sidebar resizable** via drag handle (clamp 150px–500px)
+  - **View Mode** dropdown with 7 visualization modes: Language, Directory, Degree, Impact Analysis, Dead Code, Circular Deps, Most Coupled
+  - **Display section**: Node Size slider, Edge Width slider, Link Opacity slider, Curved edges toggle
+  - **Physics section**: Charge strength slider, Link distance slider (with live `d3ReheatSimulation`)
+  - **Camera presets**: Top / Front / Side / Reset buttons + animated transitions
+  - **Screenshot export**: exports current graph view as PNG
+  - **Folder tree**: collapsible file tree built from node paths — click to highlight folder, double-click to filter graph, single-file click opens detail panel
+  - **Depth slider UX fix**: disabled with tooltip when no search term, re-runs BFS on change
+  - **nodeOpacity as function**: folder highlight dims non-selected nodes to 0.12
+
+### Architecture
+```
+src/
+  graph/
+    cycles.ts           # Tarjan's SCC (detectCycles)
+    topology.ts         # Kahn's topological sort (computeTopologicalOrder)
+    graphDashboard.ts   # dashboard v2 (~900 lines)
+  tools/
+    getCircularDeps.ts
+    getDeadCode.ts
+    getTopologicalOrder.ts
+    simulateMove.ts
+    getMostCoupled.ts
+```
+
 ## [3.5.0] - 2026-04-11
 
 ### Added

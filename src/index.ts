@@ -26,6 +26,11 @@ import { handleDbSchema } from './tools/dbSchema.js';
 import { handleDbSearch } from './tools/dbSearch.js';
 import { handleDbSnapshot } from './tools/dbSnapshot.js';
 import { handleGraphView, stopGraphServer } from './tools/graphView.js';
+import { handleGetCircularDeps } from './tools/getCircularDeps.js';
+import { handleGetDeadCode } from './tools/getDeadCode.js';
+import { handleGetTopologicalOrder } from './tools/getTopologicalOrder.js';
+import { handleSimulateMove } from './tools/simulateMove.js';
+import { handleGetMostCoupled } from './tools/getMostCoupled.js';
 import { autoIndex, autoScanUsage, autoDbSnapshot } from './startup.js';
 import { PROMPTS, getPromptMessages } from './prompts.js';
 import { closeGraphStore } from './graph/store.js';
@@ -40,7 +45,7 @@ if (!process.env.OPENAI_API_KEY) {
 const server = new Server(
   {
     name: 'stellaris-mcp',
-    version: '3.5.0',
+    version: '3.6.0',
   },
   {
     capabilities: {
@@ -349,6 +354,78 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'get_circular_deps',
+    description: 'Detect circular dependencies in the project using Tarjan\'s SCC algorithm. Returns groups of files that form dependency cycles. Use this before refactoring to identify problematic coupling. Requires a prior reindex. No API call needed.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        max_cycles: {
+          type: 'number',
+          description: 'Maximum number of cycles to return (default: 50)',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_dead_code',
+    description: 'Find files that are never imported by any other file (dead code candidates). Excludes known entry points (index, main, config, test files). Use this to identify unused code before cleanup. Requires a prior reindex. No API call needed.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        exclude_patterns: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Additional regex patterns for files to exclude (entry points). E.g., ["^src/routes/", "\\.stories\\."]',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_topological_order',
+    description: 'Returns files in dependency order (dependencies before dependents). Use this to determine the safe order to modify files during a refactor — process files in this order to avoid breaking intermediate builds. Requires a prior reindex. No API call needed.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        files: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Subset of files to order (relative paths). If omitted, orders the entire project graph.',
+        },
+      },
+    },
+  },
+  {
+    name: 'simulate_move',
+    description: 'Simulate moving a file from one path to another. Returns which files need import updates and what the new import strings should be. Use this before any file rename or refactor to get a complete migration plan. Requires a prior reindex. No API call needed.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        from: {
+          type: 'string',
+          description: 'Current relative path of the file (from project root, e.g., "src/utils/helpers.ts")',
+        },
+        to: {
+          type: 'string',
+          description: 'Target relative path after move (e.g., "src/shared/utils/helpers.ts")',
+        },
+      },
+      required: ['from', 'to'],
+    },
+  },
+  {
+    name: 'get_most_coupled',
+    description: 'Returns the most highly coupled files (highest combined in-degree + out-degree). High coupling signals refactoring candidates. Files with many consumers (high in-degree) are risky to change; files with many imports (high out-degree) have broad dependencies. Requires a prior reindex. No API call needed.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        top: {
+          type: 'number',
+          description: 'Number of files to return (default: 10, max: 100)',
+        },
+      },
+    },
+  },
 ];
 
 // List tools handler
@@ -409,6 +486,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleDbSearch(args ?? {});
       case 'graph_view':
         return await handleGraphView(args ?? {});
+      case 'get_circular_deps':
+        return await handleGetCircularDeps(args ?? {});
+      case 'get_dead_code':
+        return await handleGetDeadCode(args ?? {});
+      case 'get_topological_order':
+        return await handleGetTopologicalOrder(args ?? {});
+      case 'simulate_move':
+        return await handleSimulateMove(args ?? {});
+      case 'get_most_coupled':
+        return await handleGetMostCoupled(args ?? {});
       default:
         throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
     }
