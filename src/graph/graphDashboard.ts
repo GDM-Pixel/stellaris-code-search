@@ -21,6 +21,8 @@ export function getGraphDashboardHtml(apiBase: string): string {
 }
 
 function buildDashboardHtml(apiBase: string, cdnUrl: string, langColorsJson: string): string {
+  const HLJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js';
+  const HLJS_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css';
   return [
     '<!DOCTYPE html>',
     '<html lang="en">',
@@ -28,8 +30,10 @@ function buildDashboardHtml(apiBase: string, cdnUrl: string, langColorsJson: str
     '<meta charset="UTF-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
     '<title>Stellaris — Dependency Graph 3D</title>',
+    `<link rel="stylesheet" href="${HLJS_CSS}">`,
     getCSS(),
     `<script src="${cdnUrl}"></script>`,
+    `<script src="${HLJS_CDN}"></script>`,
     '</head>',
     '<body>',
     getBodyHtml(),
@@ -89,30 +93,43 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent2); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .overlay-text { color: var(--text-muted); font-size: 13px; }
-.file-panel { width: 280px; min-width: 260px; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+.file-panel { width: 420px; min-width: 380px; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
 .file-panel.hidden { width: 0; min-width: 0; overflow: hidden; border: none; }
-.file-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.file-panel-title { font-size: 13px; font-weight: 600; font-family: var(--mono); word-break: break-all; }
+.file-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; gap: 8px; }
+.file-panel-title { font-size: 12px; font-weight: 600; font-family: var(--mono); word-break: break-all; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .close-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px; flex-shrink: 0; }
 .close-btn:hover { color: var(--text); }
-.file-panel-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+.fp-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.fp-tab { padding: 7px 14px; font-size: 12px; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-muted); background: none; border-top: none; border-left: none; border-right: none; transition: color .15s; }
+.fp-tab:hover { color: var(--text); }
+.fp-tab.active { color: var(--accent2); border-bottom-color: var(--accent2); }
+.fp-tab-pane { display: none; flex: 1; overflow-y: auto; }
+.fp-tab-pane.active { display: flex; flex-direction: column; }
+.file-panel-meta { padding: 10px 14px; display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
 .panel-section { display: flex; flex-direction: column; gap: 6px; }
 .panel-section-title { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
 .degree-row { display: flex; gap: 16px; }
 .degree-item { display: flex; flex-direction: column; gap: 2px; }
 .degree-num { font-size: 20px; font-weight: 700; color: var(--text); }
 .degree-label { font-size: 11px; color: var(--text-muted); }
-.open-btn { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--accent); border: none; border-radius: 6px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; }
+.open-btn { display: flex; align-items: center; gap: 6px; padding: 7px 12px; background: var(--accent); border: none; border-radius: 6px; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none; flex-shrink: 0; }
 .open-btn:hover { opacity: 0.85; }
-.symbol-list { display: flex; flex-direction: column; gap: 3px; }
-.symbol-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 4px; background: var(--surface2); }
+.code-wrap { flex: 1; overflow: auto; background: #0a0e1a; }
+.code-wrap pre { margin: 0; padding: 14px 0; font-size: 12px; line-height: 1.6; }
+.code-wrap pre code { font-family: var(--mono); display: block; padding: 0 14px; }
+.code-wrap pre code.hljs { background: transparent; padding: 0 14px; }
+.symbol-list { display: flex; flex-direction: column; gap: 3px; padding: 10px 14px; }
+.symbol-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 4px; background: var(--surface2); cursor: pointer; }
+.symbol-item:hover { background: var(--border); }
 .symbol-kind { font-size: 10px; font-family: var(--mono); color: var(--accent2); min-width: 50px; flex-shrink: 0; }
-.symbol-name { font-size: 12px; font-family: var(--mono); color: var(--text); }
-.dep-list { display: flex; flex-direction: column; gap: 3px; }
+.symbol-name { font-size: 12px; font-family: var(--mono); color: var(--text); flex: 1; }
+.symbol-lines { font-size: 10px; color: var(--text-muted); font-family: var(--mono); }
+.dep-list { display: flex; flex-direction: column; gap: 3px; padding: 10px 14px; }
 .dep-item { font-size: 11px; font-family: var(--mono); color: var(--text-muted); cursor: pointer; padding: 3px 6px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dep-item:hover { background: var(--surface2); color: var(--accent2); }
 .panel-spinner { display: flex; justify-content: center; padding: 20px; }
 .panel-spinner .spinner { width: 24px; height: 24px; border-width: 2px; }
+.fp-empty { color: var(--text-muted); font-size: 12px; padding: 14px; }
 </style>`;
 }
 
@@ -169,9 +186,18 @@ function getBodyHtml(): string {
     <div class="file-panel hidden" id="file-panel">
       <div class="file-panel-header">
         <span class="file-panel-title" id="fp-title">&mdash;</span>
+        <a class="open-btn" id="fp-vscode" href="#" title="Open in VS Code" style="font-size:11px;padding:5px 10px">&#x2756; VS Code</a>
         <button class="close-btn" id="fp-close" title="Close">&#x2715;</button>
       </div>
-      <div class="file-panel-body" id="fp-body"></div>
+      <div class="file-panel-meta" id="fp-meta"></div>
+      <div class="fp-tabs">
+        <button class="fp-tab active" data-tab="code">Code</button>
+        <button class="fp-tab" data-tab="symbols">Symbols</button>
+        <button class="fp-tab" data-tab="imports">Imports</button>
+      </div>
+      <div class="fp-tab-pane active" id="fp-pane-code"></div>
+      <div class="fp-tab-pane" id="fp-pane-symbols"></div>
+      <div class="fp-tab-pane" id="fp-pane-imports"></div>
     </div>
   </div>
 </div>`;
@@ -204,8 +230,24 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
   var elExtGrid = document.getElementById('ext-grid');
   var elPanel = document.getElementById('file-panel');
   var elFpTitle = document.getElementById('fp-title');
-  var elFpBody = document.getElementById('fp-body');
+  var elFpVscode = document.getElementById('fp-vscode');
+  var elFpMeta = document.getElementById('fp-meta');
   var elFpClose = document.getElementById('fp-close');
+  var elPaneCode = document.getElementById('fp-pane-code');
+  var elPaneSymbols = document.getElementById('fp-pane-symbols');
+  var elPaneImports = document.getElementById('fp-pane-imports');
+  var fpTabs = document.querySelectorAll('.fp-tab');
+
+  fpTabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      fpTabs.forEach(function(t){ t.classList.remove('active'); });
+      tab.classList.add('active');
+      var pane = tab.dataset.tab;
+      elPaneCode.classList.toggle('active', pane === 'code');
+      elPaneSymbols.classList.toggle('active', pane === 'symbols');
+      elPaneImports.classList.toggle('active', pane === 'imports');
+    });
+  });
 
   function loadData() {
     fetch(API_BASE + '/api/data').then(function(r){ return r.json(); }).then(function(data) {
@@ -313,68 +355,130 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
 
   function safePath(p) { return p.replace(/\\\\/g, '/'); }
 
+  function extToHljsLang(ext) {
+    var map = {'.ts':'typescript','.tsx':'typescript','.js':'javascript','.jsx':'javascript','.mjs':'javascript',
+      '.py':'python','.go':'go','.rs':'rust','.php':'php','.html':'html','.css':'css','.scss':'scss',
+      '.vue':'xml','.svelte':'xml','.astro':'xml','.json':'json','.yaml':'yaml','.yml':'yaml',
+      '.sql':'sql','.md':'markdown','.graphql':'graphql','.prisma':'plaintext'};
+    return map[ext] || 'plaintext';
+  }
+
   function showFilePanel(node) {
     elPanel.classList.remove('hidden');
     elFpTitle.textContent = node.label;
+    elFpTitle.title = node.id;
     var vscodeUrl = 'vscode://file/' + safePath(node.id);
-    var secDeg = document.createElement('div'); secDeg.className = 'panel-section';
-    var titleDeg = document.createElement('div'); titleDeg.className = 'panel-section-title'; titleDeg.textContent = 'Connections';
+    elFpVscode.href = vscodeUrl;
+
+    // Reset tabs to Code
+    fpTabs.forEach(function(t){ t.classList.remove('active'); });
+    fpTabs[0].classList.add('active');
+    elPaneCode.classList.add('active');
+    elPaneSymbols.classList.remove('active');
+    elPaneImports.classList.remove('active');
+
+    // Meta: degree
+    while (elFpMeta.firstChild) elFpMeta.removeChild(elFpMeta.firstChild);
     var degRow = document.createElement('div'); degRow.className = 'degree-row';
     [{lbl:'incoming',val:node.in_degree},{lbl:'outgoing',val:node.out_degree}].forEach(function(d) {
-      var item = document.createElement('div'); item.className = 'degree-item';
-      var num = document.createElement('span'); num.className = 'degree-num'; num.textContent = d.val;
-      var lbl = document.createElement('span'); lbl.className = 'degree-label'; lbl.textContent = d.lbl;
+      var item = document.createElement('div'); item.className='degree-item';
+      var num = document.createElement('span'); num.className='degree-num'; num.textContent=d.val;
+      var lbl = document.createElement('span'); lbl.className='degree-label'; lbl.textContent=d.lbl;
       item.appendChild(num); item.appendChild(lbl); degRow.appendChild(item);
     });
-    secDeg.appendChild(titleDeg); secDeg.appendChild(degRow);
-    var openBtn = document.createElement('a'); openBtn.className = 'open-btn'; openBtn.href = vscodeUrl; openBtn.textContent = 'Open in VS Code';
-    var links = graph.graphData().links;
-    var deps = links.filter(function(l){ return getId(l.source)===node.id; }).map(function(l){ return getId(l.target); });
-    var secDeps = null;
-    if (deps.length > 0) {
-      secDeps = document.createElement('div'); secDeps.className = 'panel-section';
-      var titleDeps = document.createElement('div'); titleDeps.className='panel-section-title'; titleDeps.textContent='Imports ('+deps.length+')';
-      var depList = document.createElement('div'); depList.className = 'dep-list';
-      deps.forEach(function(d) {
-        var parts = safePath(d).split('/'), name = parts[parts.length-1];
-        var item = document.createElement('div'); item.className='dep-item'; item.title=d; item.textContent=name;
-        item.addEventListener('click', function(){ window.__stellarisGvFocus(d); });
-        depList.appendChild(item);
-      });
-      secDeps.appendChild(titleDeps); secDeps.appendChild(depList);
-    }
-    var secSym = document.createElement('div'); secSym.className='panel-section'; secSym.id='fp-symbols-section';
-    var titleSym = document.createElement('div'); titleSym.className='panel-section-title'; titleSym.textContent='Symbols';
+    elFpMeta.appendChild(degRow);
+
+    // Code pane — spinner then source
+    while (elPaneCode.firstChild) elPaneCode.removeChild(elPaneCode.firstChild);
     var spinWrap = document.createElement('div'); spinWrap.className='panel-spinner';
     var spinEl = document.createElement('div'); spinEl.className='spinner';
-    spinWrap.appendChild(spinEl); secSym.appendChild(titleSym); secSym.appendChild(spinWrap);
-    while (elFpBody.firstChild) elFpBody.removeChild(elFpBody.firstChild);
-    elFpBody.appendChild(secDeg); elFpBody.appendChild(openBtn);
-    if (secDeps) elFpBody.appendChild(secDeps);
-    elFpBody.appendChild(secSym);
+    spinWrap.appendChild(spinEl); elPaneCode.appendChild(spinWrap);
+
+    fetch(API_BASE + '/api/file-source?file=' + encodeURIComponent(node.id))
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        while (elPaneCode.firstChild) elPaneCode.removeChild(elPaneCode.firstChild);
+        var wrap = document.createElement('div'); wrap.className='code-wrap';
+        var pre = document.createElement('pre');
+        var code = document.createElement('code');
+        var lang = extToHljsLang(node.extension);
+        code.className = 'language-' + lang;
+        code.textContent = data.content || '';
+        pre.appendChild(code); wrap.appendChild(pre); elPaneCode.appendChild(wrap);
+        if (window.hljs) { window.hljs.highlightElement(code); }
+      })
+      .catch(function() {
+        while (elPaneCode.firstChild) elPaneCode.removeChild(elPaneCode.firstChild);
+        var e2 = document.createElement('div'); e2.className='fp-empty'; e2.textContent='Could not load file source.';
+        elPaneCode.appendChild(e2);
+      });
+
+    // Symbols pane
+    while (elPaneSymbols.firstChild) elPaneSymbols.removeChild(elPaneSymbols.firstChild);
+    var spinWrap2 = document.createElement('div'); spinWrap2.className='panel-spinner';
+    var spinEl2 = document.createElement('div'); spinEl2.className='spinner';
+    spinWrap2.appendChild(spinEl2); elPaneSymbols.appendChild(spinWrap2);
+
     fetch(API_BASE + '/api/file-outline?file=' + encodeURIComponent(node.id))
       .then(function(r){ return r.json(); })
       .then(function(data) {
-        var sec = document.getElementById('fp-symbols-section');
-        if (!sec) return;
-        while (sec.firstChild) sec.removeChild(sec.firstChild);
+        while (elPaneSymbols.firstChild) elPaneSymbols.removeChild(elPaneSymbols.firstChild);
         var symbols = data.symbols || [];
-        var t = document.createElement('div'); t.className='panel-section-title'; t.textContent='Symbols ('+symbols.length+')';
-        sec.appendChild(t);
         if (symbols.length === 0) {
-          var e2 = document.createElement('div'); e2.style.cssText='color:var(--text-muted);font-size:12px'; e2.textContent='No symbols found'; sec.appendChild(e2); return;
+          var e3 = document.createElement('div'); e3.className='fp-empty'; e3.textContent='No symbols found.';
+          elPaneSymbols.appendChild(e3); return;
         }
         var list = document.createElement('div'); list.className='symbol-list';
-        symbols.slice(0,30).forEach(function(s) {
+        symbols.forEach(function(s) {
           var item = document.createElement('div'); item.className='symbol-item';
           var kind = document.createElement('span'); kind.className='symbol-kind'; kind.textContent=s.kind||'';
           var name = document.createElement('span'); name.className='symbol-name'; name.textContent=s.name;
-          item.appendChild(kind); item.appendChild(name); list.appendChild(item);
+          var lines = document.createElement('span'); lines.className='symbol-lines'; lines.textContent=s.lines||'';
+          item.appendChild(kind); item.appendChild(name); item.appendChild(lines);
+          list.appendChild(item);
         });
-        sec.appendChild(list);
-        if (symbols.length>30) { var more=document.createElement('div'); more.style.cssText='color:var(--text-muted);font-size:11px;padding:4px 8px'; more.textContent='+'+(symbols.length-30)+' more\u2026'; sec.appendChild(more); }
+        elPaneSymbols.appendChild(list);
       })
-      .catch(function() { var sec=document.getElementById('fp-symbols-section'); if(sec){while(sec.firstChild)sec.removeChild(sec.firstChild);} });
+      .catch(function() {
+        while (elPaneSymbols.firstChild) elPaneSymbols.removeChild(elPaneSymbols.firstChild);
+      });
+
+    // Imports pane
+    while (elPaneImports.firstChild) elPaneImports.removeChild(elPaneImports.firstChild);
+    var links = graph.graphData().links;
+    var deps = links.filter(function(l){ return getId(l.source)===node.id; }).map(function(l){ return getId(l.target); });
+    var rdeps = links.filter(function(l){ return getId(l.target)===node.id; }).map(function(l){ return getId(l.source); });
+    if (deps.length === 0 && rdeps.length === 0) {
+      var e4 = document.createElement('div'); e4.className='fp-empty'; e4.textContent='No import edges found.';
+      elPaneImports.appendChild(e4);
+    } else {
+      if (deps.length > 0) {
+        var secOut = document.createElement('div'); secOut.className='panel-section'; secOut.style.cssText='padding:10px 14px 0';
+        var tOut = document.createElement('div'); tOut.className='panel-section-title'; tOut.textContent='Imports ('+deps.length+')';
+        secOut.appendChild(tOut); elPaneImports.appendChild(secOut);
+        var depList = document.createElement('div'); depList.className='dep-list';
+        deps.forEach(function(d) {
+          var parts = safePath(d).split('/'), name = parts[parts.length-1];
+          var it = document.createElement('div'); it.className='dep-item'; it.title=d; it.textContent=name;
+          it.addEventListener('click', function(){ window.__stellarisGvFocus(d); });
+          depList.appendChild(it);
+        });
+        elPaneImports.appendChild(depList);
+      }
+      if (rdeps.length > 0) {
+        var secIn = document.createElement('div'); secIn.className='panel-section'; secIn.style.cssText='padding:10px 14px 0';
+        var tIn = document.createElement('div'); tIn.className='panel-section-title'; tIn.textContent='Imported by ('+rdeps.length+')';
+        secIn.appendChild(tIn); elPaneImports.appendChild(secIn);
+        var rdepList = document.createElement('div'); rdepList.className='dep-list';
+        rdeps.forEach(function(d) {
+          var parts = safePath(d).split('/'), name = parts[parts.length-1];
+          var it = document.createElement('div'); it.className='dep-item'; it.title=d; it.textContent=name;
+          it.addEventListener('click', function(){ window.__stellarisGvFocus(d); });
+          rdepList.appendChild(it);
+        });
+        elPaneImports.appendChild(rdepList);
+      }
+    }
   }
 
   window.__stellarisGvFocus = function(filePath) {

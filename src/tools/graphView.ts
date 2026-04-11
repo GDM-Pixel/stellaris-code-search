@@ -63,6 +63,26 @@ function makeRequestHandler(projectRoot: string, port: number) {
       return;
     }
 
+    if (pathname === '/api/file-source') {
+      const filePath = parsedUrl.searchParams.get('file') ?? '';
+      if (!filePath) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing file parameter' }));
+        return;
+      }
+      readFile(filePath, 'utf-8')
+        .then(content => {
+          setCorsHeaders(res);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ file: filePath, content }));
+        })
+        .catch(() => {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'File not found', content: '' }));
+        });
+      return;
+    }
+
     if (pathname === '/api/file-outline') {
       const filePath = parsedUrl.searchParams.get('file') ?? '';
       if (!filePath) {
