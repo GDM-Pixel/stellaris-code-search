@@ -22,6 +22,7 @@ import { handleGetDependents } from './tools/getDependents.js';
 import { handleGetBlastRadius } from './tools/getBlastRadius.js';
 import { handleUsageStats } from './tools/usageStats.js';
 import { handleUsageDashboard } from './tools/usageDashboard.js';
+import { handleUsageAnomalies } from './tools/usageAnomalies.js';
 import { handleDbSchema } from './tools/dbSchema.js';
 import { handleDbSearch } from './tools/dbSearch.js';
 import { handleDbSnapshot } from './tools/dbSnapshot.js';
@@ -31,6 +32,9 @@ import { handleGetDeadCode } from './tools/getDeadCode.js';
 import { handleGetTopologicalOrder } from './tools/getTopologicalOrder.js';
 import { handleSimulateMove } from './tools/simulateMove.js';
 import { handleGetMostCoupled } from './tools/getMostCoupled.js';
+import { handleProjectHealth } from './tools/projectHealth.js';
+import { handleGraphExport } from './tools/graphExport.js';
+import { handleUsageBreakdown } from './tools/usageBreakdown.js';
 import { autoIndex, autoScanUsage, autoDbSnapshot } from './startup.js';
 import { PROMPTS, getPromptMessages } from './prompts.js';
 import { closeGraphStore } from './graph/store.js';
@@ -45,7 +49,7 @@ if (!process.env.OPENAI_API_KEY) {
 const server = new Server(
   {
     name: 'stellaris-mcp',
-    version: '3.6.0',
+    version: '3.9.1',
   },
   {
     capabilities: {
@@ -251,8 +255,8 @@ const TOOLS = [
         },
         group_by: {
           type: 'string',
-          enum: ['model', 'project', 'day'],
-          description: 'Group results by model, project, or day (default: model)',
+          enum: ['model', 'project', 'day', 'cache', 'anomaly'],
+          description: 'Group results by model, project, day, cache analytics, or session anomalies (default: model)',
         },
       },
     },
@@ -266,6 +270,20 @@ const TOOLS = [
         port: {
           type: 'number',
           description: 'Port for the local HTTP server (default: 8090)',
+        },
+      },
+    },
+  },
+  {
+    name: 'usage_anomalies',
+    description: 'List Claude Code sessions that hit health thresholds: SES001 cost ≥$25, SES002 ≥200 turns, SES003 ≥5M tokens, SES004 idle 7+ days. No API key required.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        period: {
+          type: 'string',
+          enum: ['today', '7d', '30d', 'all'],
+          description: 'Time period to check for anomalies (default: all)',
         },
       },
     },
@@ -426,6 +444,58 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'project_health',
+    description: 'Aggregated project health check. Runs cycle detection (Tarjan), dead code analysis, coupling hotspots, graph complexity stats, max import depth, and index freshness — returns a global score A–F. Use as a quick diagnostic before any major refactoring. No API call needed.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {},
+    },
+  },
+  {
+    name: 'usage_breakdown',
+    description: 'Show where Claude Code tokens go: task category breakdown (coding, debugging, feature, refactoring, testing, exploration, planning, delegation, git, build_deploy, conversation, brainstorming), MCP server call counts, and core tool usage. Inspired by Codeburn. No API key required.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        period: {
+          type: 'string',
+          enum: ['today', '7d', '30d', 'all'],
+          description: 'Time period (default: all)',
+        },
+      },
+    },
+  },
+  {
+    name: 'graph_export',
+    description: 'Export a static architecture diagram from the dependency graph. Groups files by semantic layer (Tools, Storage, Graph, Indexer, Analytics, API, Frontend, Backend, Security, Config) based on directory-name heuristics. Three output formats: mermaid (copy-paste in README, renders on GitHub/GitLab), svg (standalone dark-theme file), html (self-contained page with legend + download button). Requires a prior reindex. No API call needed.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        format: {
+          type: 'string',
+          enum: ['mermaid', 'svg', 'html'],
+          description: 'Output format: mermaid (default, copy into README), svg (standalone vector file), html (interactive dark-theme page)',
+        },
+        output_path: {
+          type: 'string',
+          description: 'Absolute or relative path for the output file. Default: .vectors/graph-export.{md|svg|html}',
+        },
+        focus_dir: {
+          type: 'string',
+          description: 'Only include files whose path contains this string (e.g., "src/graph"). Useful to zoom in on a sub-system.',
+        },
+        top_coupled: {
+          type: 'number',
+          description: 'Limit diagram to the N most coupled files (sorted by in-degree + out-degree). Useful to reduce noise on large projects.',
+        },
+        exclude_isolated: {
+          type: 'boolean',
+          description: 'Exclude files with no dependencies (in-degree = 0 and out-degree = 0). Default: true.',
+        },
+      },
+    },
+  },
 ];
 
 // List tools handler
@@ -478,6 +548,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleUsageStats(args ?? {});
       case 'usage_dashboard':
         return await handleUsageDashboard(args ?? {});
+      case 'usage_anomalies':
+        return await handleUsageAnomalies(args ?? {});
       case 'db_snapshot':
         return await handleDbSnapshot(args ?? {});
       case 'db_schema':
@@ -496,6 +568,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleSimulateMove(args ?? {});
       case 'get_most_coupled':
         return await handleGetMostCoupled(args ?? {});
+      case 'project_health':
+        return await handleProjectHealth(args ?? {});
+      case 'usage_breakdown':
+        return await handleUsageBreakdown(args ?? {});
+      case 'graph_export':
+        return await handleGraphExport(args ?? {});
       default:
         throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
     }

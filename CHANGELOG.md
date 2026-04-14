@@ -1,5 +1,35 @@
 # Changelog
 
+## [3.9.1] - 2026-04-14
+
+### Fixed
+- **Dashboard Breakdown tab**: `turn_count` was always 0 for most categories because `queryCategoryBreakdown` filtered on `stop_reason IN ('end_turn','stop_sequence')`, excluding all turns that ended with `tool_use`. Fixed with `COUNT(*)`.
+- **Category migration**: the v3.9.0 migration added `category`/`core_tools`/`mcp_tools` columns but did not clear `turns` and `processed_files`, so existing rows kept their `DEFAULT 'general'` value without ever being re-classified. Migration now wipes `turns`, `sessions`, and `processed_files` to force a full rescan on first startup.
+- **Donut legend text**: `CAT_ICONS[r.category] || '📌' + ' ' + label` was parsed as `CAT_ICONS[r.category] || ('📌 ' + label)` due to operator precedence — icon was shown without label. Fixed with explicit parentheses.
+- **Legend text color**: `generateLabels` override on Chart.js ignores `labels.color`. Added `fontColor: '#c9cfc1'` directly on each generated label item.
+- **Cache donut**: all segments were the same green (all models had hit_ratio ≥ 0.7). Changed to a distinct per-model color palette; donut now shows `cache_read` volume per model. Legend shows `model — hit XX%`, tooltip shows cache read volume and hit ratio.
+- **Cache donut syntax error**: missing closing brace in `options.plugins` caused `Unexpected token ')'` and crashed the entire dashboard JS.
+
+## [3.9.0] - 2026-04-14
+
+### Added
+- **`usage_breakdown` tool** — new MCP tool returning a structured Markdown report with three sections: task category breakdown, MCP server breakdown, and core tool breakdown. Accepts `period` parameter (`today`, `7d`, `30d`, `all`). Inspired by [AgentSeal/codeburn](https://github.com/AgentSeal/codeburn).
+- **Task category classification** (`src/usage/classifier.ts`) — heuristic classifier assigning each Claude Code turn to one of 13 categories: `coding`, `debugging`, `feature`, `refactoring`, `testing`, `exploration`, `planning`, `delegation`, `git`, `build_deploy`, `conversation`, `brainstorming`, `general`. Classification order: agent spawn → plan mode → edit+keywords → read-only → bash+keywords → MCP-only → brainstorm keywords → no tools → fallback. Bilingual FR+EN regex patterns.
+- **Global dedup by `message.id`** (`src/usage/scanner.ts`) — a shared `Set<string>` across all JSONL files prevents double-counting when sessions are resumed (`/resume`). The `message_id` column has a `UNIQUE` constraint at DB level as a second safety net.
+- **MCP / core tool split** — scanner now extracts `mcp_tools` (array of `{server, tool}` from `mcp__<server>__<tool>` names) and `core_tools` (all other tools) per turn.
+- **`usage_stats` extended** — `group_by` now accepts `category`, `mcp`, and `core_tool` in addition to the existing `model`, `project`, `day`, `cache`, `anomaly`.
+- **Dashboard "Breakdown" tab** — new tab with doughnut chart of task categories, category table, horizontal bar chart of top MCP servers, and top 15 core tools table.
+- **New DB columns on `turns`**: `message_id`, `user_message_preview`, `core_tools`, `mcp_tools`, `web_search_requests`, `speed`, `category`, `user_parent_ts` — all added via idempotent `ALTER TABLE` migrations.
+
+### Architecture
+```
+src/
+  usage/
+    classifier.ts       # NEW — 13-category heuristic classifier (bilingual FR+EN)
+  tools/
+    usageBreakdown.ts   # NEW — usage_breakdown MCP tool
+```
+
 ## [3.6.0] - 2026-04-11
 
 ### Added

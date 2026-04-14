@@ -16,7 +16,8 @@ Search your codebase with natural language, browse file structures, inspect symb
 - **Dependency graph** — resolves imports to real file paths, tracks file→file dependencies
 - **Blast radius analysis** — BFS traversal to find what would break if you change a file
 - **MCP Prompts** — 5 guided workflows (`/nova_explore`, `/nova_find`, `/nova_file`, `/nova_review`, `/nova_usage`)
-- **Usage dashboard** — tracks Claude Code token consumption and estimated API cost in real time
+- **Usage dashboard** — tracks Claude Code token consumption and estimated API cost in real time, with cache analytics and task category breakdown
+- **Token breakdown** — see where tokens go: by task category (coding, debugging, feature…), MCP server, and core tool — inspired by [codeburn](https://github.com/AgentSeal/codeburn)
 - **Index integrity checker** — automatically purges orphaned chunks and stale meta entries at every startup
 - **Auto-reindex hook** — keeps the index fresh automatically after every Write/Edit
 - **AST exploration**: file tree, symbol outlines, source extraction — zero API calls
@@ -40,7 +41,7 @@ Tested on a real-world Astro project (341 files, 430 chunks indexed):
 
 Stellaris excels at complex multi-file questions (auth flows, payment logic, i18n systems). Grep/Glob remain better for exhaustive file listings. Best strategy: **Stellaris first, Grep/Glob as complement**.
 
-## Tools (12)
+## Tools (14)
 
 ### Semantic search (requires OpenAI API key)
 
@@ -71,8 +72,9 @@ Stellaris excels at complex multi-file questions (auth flows, payment logic, i18
 
 | Tool | Description |
 |------|-------------|
-| `usage_stats` | Token consumption and estimated API cost by model/project/day. Periods: `today`, `7d`, `30d`, `all`. |
-| `usage_dashboard` | Launches a local web dashboard (port 8090) with interactive charts, session breakdown, and 90-day cost history. |
+| `usage_stats` | Token consumption and estimated API cost. Group by `model`, `project`, `day`, `cache`, `anomaly`, `category`, `mcp`, or `core_tool`. |
+| `usage_dashboard` | Launches a local web dashboard (port 8090) with interactive charts, session breakdown, cache analytics, and Breakdown tab. |
+| `usage_breakdown` | Structured Markdown report: task category breakdown, MCP server breakdown, core tool breakdown. Accepts `period` parameter. |
 
 ## MCP Prompts
 
@@ -302,13 +304,15 @@ src/
     getDependencies.ts  # get_dependencies tool
     getDependents.ts    # get_dependents tool
     getBlastRadius.ts   # get_blast_radius tool
-    usageStats.ts       # usage_stats tool
+    usageStats.ts       # usage_stats tool (group_by: model/project/day/cache/anomaly/category/mcp/core_tool)
     usageDashboard.ts   # usage_dashboard tool + HTTP server
+    usageBreakdown.ts   # usage_breakdown tool (Markdown report)
   usage/
-    scanner.ts          # JSONL scanner + FileWatcher (incremental, SQLite-backed)
-    store.ts            # SQLite schema: turns, sessions, processed_files
+    scanner.ts          # JSONL scanner — global dedup by message.id, MCP/core split, classifier
+    store.ts            # SQLite schema: turns, sessions, processed_files + v3.9 columns
     pricing.ts          # Per-model pricing table (April 2026)
-    dashboard.ts        # Interactive HTML dashboard renderer
+    classifier.ts       # 13-category heuristic classifier (bilingual FR+EN)
+    dashboard.ts        # Interactive HTML dashboard renderer (5 tabs incl. Breakdown)
   indexer/
     integrity.ts        # Startup integrity check: orphan purge + stale meta cleanup
 scripts/
