@@ -4,7 +4,7 @@
 
 # Stellaris MCP
 
-An MCP server that combines **semantic search** (OpenAI embeddings + LanceDB) with **AST-based code exploration** (tree-sitter) for AI agents.
+An MCP server that combines **semantic search** (pluggable embeddings + LanceDB) with **AST-based code exploration** (tree-sitter) for AI agents.
 
 Search your codebase with natural language, browse file structures, inspect symbol outlines, and retrieve exact source code — all through the Model Context Protocol.
 
@@ -13,6 +13,8 @@ Search your codebase with natural language, browse file structures, inspect symb
 ## Features
 
 - **Hybrid search** (FTS5 + vector embeddings + RRF) — finds exact identifiers *and* semantic concepts
+- **Pluggable embeddings** — OpenAI (default), Voyage AI (`voyage-code-3`, best on code), or Ollama (fully local, no internet required)
+- **Optional re-ranking** — Voyage `rerank-2` or Cohere `rerank-v3.5` post-RRF pass for +15-30% top-5 precision
 - **Dependency graph** — resolves imports to real file paths, tracks file→file dependencies
 - **Blast radius analysis** — BFS traversal to find what would break if you change a file
 - **MCP Prompts** — 5 guided workflows (`/nova_explore`, `/nova_find`, `/nova_file`, `/nova_review`, `/nova_usage`)
@@ -25,8 +27,8 @@ Search your codebase with natural language, browse file structures, inspect symb
 - **Incremental indexing**: only changed files are re-embedded
 - **Safe by default**: no auto-indexing until you explicitly run `reindex` for the first time
 - **Auto-indexing** on subsequent startups (opt-in via `.stellarisrc`)
-- **23 file extensions**: TS, JS, Python, Go, Rust, PHP, HTML, CSS, Astro, Vue, Svelte, SCSS, JSON, YAML, SQL, GraphQL, Prisma, TOML, and more
-- **Graceful degradation**: works without `OPENAI_API_KEY` (AST tools still available)
+- **25 file extensions**: TS, JS, Python, Go, Rust, PHP, Java, Ruby, HTML, CSS, Astro, Vue, Svelte, SCSS, JSON, YAML, SQL, GraphQL, Prisma, TOML, and more
+- **Graceful degradation**: works without any API key (AST tools still available)
 
 ## Benchmark: Stellaris vs Grep/Glob
 
@@ -43,13 +45,13 @@ Stellaris excels at complex multi-file questions (auth flows, payment logic, i18
 
 ## Tools (14)
 
-### Semantic search (requires OpenAI API key)
+### Semantic search (requires an embedding API key, or Ollama locally)
 
 | Tool | Description |
 |------|-------------|
-| `search_code` | Hybrid search (FTS + vector + RRF) in code files. Returns files, lines, previews, and `search_mode`. Accepts optional `extensions` filter. |
+| `search_code` | Hybrid search (FTS + vector + RRF + optional rerank) in code files. Returns files, lines, previews, and `search_mode`. Accepts optional `extensions` filter. |
 | `search_docs` | Hybrid search in Markdown documentation. |
-| `reindex` | Incremental re-indexing of the project. Builds vector index, FTS index, and dependency graph. |
+| `reindex` | Incremental re-indexing of the project. Builds vector index, FTS index, and dependency graph. Use `force=true` after switching embedding providers. |
 | `reindex_file` | Re-index a single file by absolute path. Used by auto-reindex hooks after edits. |
 
 ### Structural exploration (no API calls)
@@ -181,9 +183,28 @@ npm run build
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `OPENAI_API_KEY` | For search/indexing | OpenAI API key for embeddings (`text-embedding-3-small`) |
+| `OPENAI_API_KEY` | For OpenAI provider (default) | API key for `text-embedding-3-small` |
+| `EMBEDDING_PROVIDER` | No (default: `openai`) | `openai` \| `voyage` \| `ollama` |
+| `VOYAGE_API_KEY` | For Voyage provider | API key for `voyage-code-3` embeddings |
+| `VOYAGE_MODEL` | No (default: `voyage-code-3`) | Override Voyage embedding model |
+| `OLLAMA_HOST` | No (default: `http://localhost:11434`) | Ollama base URL |
+| `OLLAMA_MODEL` | No (default: `nomic-embed-text`) | Ollama embedding model |
+| `RERANK_PROVIDER` | No (default: `off`) | `off` \| `voyage` \| `cohere` — enables re-ranking |
+| `VOYAGE_RERANK_MODEL` | No (default: `rerank-2`) | Voyage re-rank model |
+| `COHERE_API_KEY` | For Cohere re-ranker | API key for `rerank-v3.5` |
 
-Without `OPENAI_API_KEY`, the server starts normally — `get_file_tree`, `get_file_outline`, and `get_symbol` work without it.
+Without any embedding API key (and no Ollama), the server starts normally — `get_file_tree`, `get_file_outline`, and `get_symbol` work without it.
+
+#### Switching embedding providers
+
+If you change `EMBEDDING_PROVIDER` on an existing index, Stellaris will refuse to run an incremental reindex (to avoid silently corrupting the vector store). Run:
+
+```bash
+# Force-rebuild the index with the new provider
+reindex force=true
+```
+
+This deletes the old LanceDB table and `meta.json`, then rebuilds from scratch.
 
 ### `.vectorconfig.json` (optional)
 
@@ -199,15 +220,21 @@ Place at the root of the project to index:
 
 ### `.stellarisrc` (auto-generated)
 
-Created automatically after the first successful `reindex`. Controls auto-indexing behavior on server startup.
+Created automatically after the first successful `reindex`. Controls auto-indexing and embedding configuration.
 
 ```
 # Stellaris Code Search configuration
-# Set auto_index=true to enable automatic incremental indexing on startup
 auto_index=true
+
+# Embedding provider (openai | voyage | ollama) — default: openai
+# embedding_provider=voyage
+# embedding_model=voyage-code-3
+
+# Re-ranking (off | voyage | cohere) — default: off
+# rerank_provider=voyage
 ```
 
-You can toggle this via the `reindex` tool (`enable_auto_index: false`) or edit the file manually. Deleting the file disables auto-indexing.
+You can toggle `auto_index` via the `reindex` tool (`enable_auto_index: false`) or edit the file manually.
 
 ### `.vectorignore` (optional)
 
@@ -243,6 +270,41 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
+To use Voyage embeddings instead of OpenAI:
+
+```json
+{
+  "mcpServers": {
+    "stellaris-mcp": {
+      "command": "node",
+      "args": ["/path/to/stellaris-code-search/dist/index.js"],
+      "env": {
+        "EMBEDDING_PROVIDER": "voyage",
+        "VOYAGE_API_KEY": "pa-...",
+        "RERANK_PROVIDER": "voyage"
+      }
+    }
+  }
+}
+```
+
+To use Ollama (fully local, no API key needed):
+
+```json
+{
+  "mcpServers": {
+    "stellaris-mcp": {
+      "command": "node",
+      "args": ["/path/to/stellaris-code-search/dist/index.js"],
+      "env": {
+        "EMBEDDING_PROVIDER": "ollama",
+        "OLLAMA_MODEL": "nomic-embed-text"
+      }
+    }
+  }
+}
+```
+
 ## Supported languages & formats
 
 | Language / Format | Extensions | Parsing | Symbol types |
@@ -255,6 +317,8 @@ Add to your `claude_desktop_config.json`:
 | Go | `.go` | tree-sitter (AST) | function, method, type |
 | Rust | `.rs` | tree-sitter (AST) | function, struct, impl, trait, type |
 | PHP | `.php` | tree-sitter (AST) | function, class, type |
+| **Java** | `.java` | **tree-sitter (AST)** | class, interface, enum |
+| **Ruby** | `.rb` | **tree-sitter (AST)** | class, module, method |
 | HTML | `.html` | tree-sitter (AST) | element |
 | CSS | `.css` | tree-sitter (AST) | rule |
 | Astro | `.astro` | fallback (chunked) | module |
@@ -283,13 +347,19 @@ src/
   indexer/
     scanner.ts          # File scanning (.gitignore, .vectorignore)
     chunker.ts          # Multi-language AST parsing + symbol extraction
-    embedder.ts         # OpenAI embeddings (batch)
-    hasher.ts           # SHA-256 hashing for incremental indexing
+    embedder.ts         # Embedding factory (provider-agnostic)
+    hasher.ts           # SHA-256 hashing + _index_config sentinel
+    providers/
+      base.ts           # EmbeddingProvider interface + retry helper
+      openai.ts         # OpenAI provider (text-embedding-3-small)
+      voyage.ts         # Voyage AI provider (voyage-code-3)
+      ollama.ts         # Ollama provider (nomic-embed-text, local)
   store/
-    lancedb.ts          # LanceDB vector storage
+    lancedb.ts          # LanceDB vector storage (dynamic dims)
     fts.ts              # SQLite FTS5 full-text index
   search/
-    hybrid.ts           # RRF fusion of vector + FTS results
+    hybrid.ts           # RRF fusion of vector + FTS results + optional rerank
+    reranker.ts         # Voyage / Cohere re-ranking post-RRF
   graph/
     resolver.ts         # Import string → real file path resolution
     store.ts            # SQLite dependency graph (graph.db)

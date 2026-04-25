@@ -1,6 +1,6 @@
 {
   "name": "stellaris-mcp",
-  "version": "3.9.1",
+  "version": "4.3.0",
   "description": "MCP server for semantic code search + AST symbol exploration + dependency graph analysis — supports TS, JS, Python, Go, Rust, PHP, HTML, CSS, Astro, Vue, Svelte, SCSS, SQL, and more",
   "license": "MIT",
   "repository": {
@@ -42,15 +42,17 @@
     "tree-sitter-css": "^0.23.2",
     "tree-sitter-go": "^0.23.4",
     "tree-sitter-html": "^0.23.2",
+    "tree-sitter-java": "^0.23.5",
     "tree-sitter-php": "^0.23.12",
     "tree-sitter-python": "^0.23.6",
+    "tree-sitter-ruby": "^0.23.1",
     "tree-sitter-rust": "^0.23.3",
     "tree-sitter-typescript": "^0.23.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/pg": "^8.11.10",
     "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }

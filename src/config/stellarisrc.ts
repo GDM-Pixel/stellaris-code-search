@@ -5,6 +5,12 @@ const RC_FILENAME = '.stellarisrc';
 
 export interface StellarisRc {
   auto_index: boolean;
+  /** Embedding provider: 'openai' | 'voyage' | 'ollama' (default: openai) */
+  embedding_provider?: 'openai' | 'voyage' | 'ollama';
+  /** Model override for the embedding provider */
+  embedding_model?: string;
+  /** Re-ranking provider: 'off' | 'voyage' | 'cohere' (default: off) */
+  rerank_provider?: 'off' | 'voyage' | 'cohere';
   /** Database connection string (stored in plaintext — ensure .stellarisrc is gitignored) */
   db_connection_string?: string;
   /** Database provider override ('postgres' | 'mysql' | 'sqlite' | 'auto') */
@@ -34,6 +40,15 @@ function parseRc(raw: string): Partial<StellarisRc> {
     switch (key) {
       case 'auto_index':
         result.auto_index = value === 'true';
+        break;
+      case 'embedding_provider':
+        result.embedding_provider = value as StellarisRc['embedding_provider'];
+        break;
+      case 'embedding_model':
+        result.embedding_model = value;
+        break;
+      case 'rerank_provider':
+        result.rerank_provider = value as StellarisRc['rerank_provider'];
         break;
       case 'db_connection_string':
         result.db_connection_string = value;

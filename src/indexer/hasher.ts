@@ -9,8 +9,19 @@ export interface FileMeta {
   last_indexed: string;
 }
 
+export interface IndexConfig {
+  provider: string;
+  model: string;
+  dims: number;
+}
+
 export interface MetaIndex {
   [relativePath: string]: FileMeta;
+}
+
+interface RawMetaFile {
+  _index_config?: IndexConfig;
+  [relativePath: string]: FileMeta | IndexConfig | undefined;
 }
 
 export interface ChangedFiles {
@@ -31,7 +42,19 @@ export async function computeFileHash(filePath: string): Promise<string> {
 export async function loadMetaIndex(projectRoot: string): Promise<MetaIndex> {
   try {
     const raw = await readFile(metaPath(projectRoot), 'utf-8');
-    return JSON.parse(raw) as MetaIndex;
+    const parsed = JSON.parse(raw) as RawMetaFile;
+    // Strip the _index_config sentinel — callers work only with FileMeta entries
+    const { _index_config: _, ...fileMeta } = parsed;
+    return fileMeta as MetaIndex;
+  } catch {
+    return {};
+  }
+}
+
+async function loadRawMeta(projectRoot: string): Promise<RawMetaFile> {
+  try {
+    const raw = await readFile(metaPath(projectRoot), 'utf-8');
+    return JSON.parse(raw) as RawMetaFile;
   } catch {
     return {};
   }
@@ -41,10 +64,41 @@ export async function saveMetaIndex(projectRoot: string, meta: MetaIndex): Promi
   const dir = join(projectRoot, '.vectors');
   await mkdir(dir, { recursive: true });
 
+  // Preserve _index_config if it exists
+  const existing = await loadRawMeta(projectRoot);
+  const toWrite: RawMetaFile = { ...meta };
+  if (existing._index_config) toWrite._index_config = existing._index_config;
+
   // Atomic write: write to .tmp then rename to avoid corrupt meta.json on crash mid-write
   const target = metaPath(projectRoot);
   const tmp = target + '.tmp';
-  await writeFile(tmp, JSON.stringify(meta, null, 2), 'utf-8');
+  await writeFile(tmp, JSON.stringify(toWrite, null, 2), 'utf-8');
+  await rename(tmp, target);
+}
+
+/**
+ * Read the stored embedding config from meta.json, or null if not set.
+ */
+export async function getStoredIndexConfig(projectRoot: string): Promise<IndexConfig | null> {
+  const raw = await loadRawMeta(projectRoot);
+  const cfg = raw._index_config;
+  if (cfg && typeof cfg.provider === 'string') return cfg;
+  return null;
+}
+
+/**
+ * Persist the current embedding config into meta.json (preserves file entries).
+ */
+export async function saveIndexConfig(projectRoot: string, config: IndexConfig): Promise<void> {
+  const dir = join(projectRoot, '.vectors');
+  await mkdir(dir, { recursive: true });
+
+  const existing = await loadRawMeta(projectRoot);
+  const toWrite: RawMetaFile = { ...existing, _index_config: config };
+
+  const target = metaPath(projectRoot);
+  const tmp = target + '.tmp';
+  await writeFile(tmp, JSON.stringify(toWrite, null, 2), 'utf-8');
   await rename(tmp, target);
 }
 

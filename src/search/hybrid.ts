@@ -9,6 +9,7 @@
 import { searchByVector, type SearchResult } from '../store/lancedb.js';
 import { searchFTS, hasFTSIndex, type FTSSearchResult } from '../store/fts.js';
 import { embedText } from '../indexer/embedder.js';
+import { rerank } from './reranker.js';
 
 const RRF_K = 60;
 
@@ -50,11 +51,14 @@ export async function hybridSearch(
 
   // If only one source available, return it directly
   if (vectorResults.length === 0 && ftsResults.length === 0) return [];
-  if (vectorResults.length === 0) return ftsToHybrid(ftsResults, limit);
-  if (ftsResults.length === 0) return vectorToHybrid(vectorResults, limit);
 
-  // Merge via RRF
-  return mergeRRF(vectorResults, ftsResults, limit, query);
+  let merged: HybridResult[];
+  if (vectorResults.length === 0) merged = ftsToHybrid(ftsResults, limit * 2);
+  else if (ftsResults.length === 0) merged = vectorToHybrid(vectorResults, limit * 2);
+  else merged = mergeRRF(vectorResults, ftsResults, limit * 2, query);
+
+  // Optional re-ranking pass (RERANK_PROVIDER env / .stellarisrc)
+  return rerank(query, merged, limit);
 }
 
 /**

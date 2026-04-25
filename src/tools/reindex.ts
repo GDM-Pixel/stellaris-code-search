@@ -1,23 +1,45 @@
 import { findProjectRoot, scanFiles } from '../indexer/scanner.js';
 import { loadConfig } from '../config/loader.js';
-import { findChangedFiles, loadMetaIndex, saveMetaIndex, computeFileHash } from '../indexer/hasher.js';
+import { findChangedFiles, loadMetaIndex, saveMetaIndex, computeFileHash, getStoredIndexConfig, saveIndexConfig } from '../indexer/hasher.js';
 import { chunkFile, extractFileImports } from '../indexer/chunker.js';
-import { embedChunks } from '../indexer/embedder.js';
+import { embedChunks, getEmbeddingConfig } from '../indexer/embedder.js';
 import { addChunks, deleteChunksByFile } from '../store/lancedb.js';
 import { addFTSChunks, deleteFTSChunksByFile } from '../store/fts.js';
 import { loadStellarisRc, saveStellarisRc } from '../config/stellarisrc.js';
 import { setFileEdges, deleteFileEdges } from '../graph/store.js';
 import { resolveImports, resetResolverCache } from '../graph/resolver.js';
 import { readFileSync } from 'node:fs';
-import { relative, resolve, extname } from 'node:path';
+import { rm } from 'node:fs/promises';
+import { relative, resolve, extname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import type { FileInfo } from '../indexer/scanner.js';
 
-export async function runReindex(projectRoot: string): Promise<{
+export async function runReindex(projectRoot: string, force = false): Promise<{
   files_processed: number;
   chunks_created: number;
   files_deleted: number;
 }> {
+  // Guard: refuse incremental reindex if embedding config changed — would corrupt the index
+  const currentConfig = getEmbeddingConfig();
+  const storedConfig = await getStoredIndexConfig(projectRoot);
+  if (storedConfig && (
+    storedConfig.provider !== currentConfig.provider ||
+    storedConfig.model !== currentConfig.model ||
+    storedConfig.dims !== currentConfig.dims
+  )) {
+    if (!force) {
+      throw new Error(
+        `Embedding config changed: stored=${storedConfig.provider}/${storedConfig.model}/${storedConfig.dims}dims, ` +
+        `current=${currentConfig.provider}/${currentConfig.model}/${currentConfig.dims}dims. ` +
+        `Run reindex with force=true to rebuild the index with the new provider.`
+      );
+    }
+    // force=true: wipe LanceDB + meta to start fresh
+    console.error(`[Stellaris] force=true: dropping existing index (provider changed from ${storedConfig.provider} to ${currentConfig.provider})`);
+    await rm(join(projectRoot, '.vectors', 'lancedb'), { recursive: true, force: true });
+    await rm(join(projectRoot, '.vectors', 'meta.json'), { force: true });
+  }
+
   const config = await loadConfig(projectRoot);
   const files = await scanFiles(projectRoot, config);
   const changed = await findChangedFiles(projectRoot, files);
@@ -69,7 +91,7 @@ export async function runReindex(projectRoot: string): Promise<{
     embedded = await embedChunks(allChunks);
 
     // Store in LanceDB + FTS
-    await addChunks(projectRoot, embedded);
+    await addChunks(projectRoot, embedded, currentConfig.dims);
     await addFTSChunks(projectRoot, embedded.map(c => ({
       id: c.id,
       file_path: c.file_path,
@@ -91,10 +113,12 @@ export async function runReindex(projectRoot: string): Promise<{
           last_indexed: new Date().toISOString(),
         };
       }
-      meta[chunk.file_path].chunk_ids.push(chunk.id);
+      meta[chunk.file_path]!.chunk_ids.push(chunk.id);
     }
   }
 
+  // Persist current embedding config so future reindexes can detect provider changes
+  await saveIndexConfig(projectRoot, currentConfig);
   await saveMetaIndex(projectRoot, meta);
 
   // Build dependency graph for processed files
@@ -239,6 +263,7 @@ export async function handleReindexFile(args: Record<string, unknown>) {
 export async function handleReindex(args: Record<string, unknown>) {
   const path = args.path as string | undefined;
   const enableAutoIndex = args.enable_auto_index as boolean | undefined;
+  const force = (args.force as boolean | undefined) ?? false;
   const projectRoot = path ?? findProjectRoot(process.cwd());
 
   // Handle auto_index toggle
@@ -250,7 +275,7 @@ export async function handleReindex(args: Record<string, unknown>) {
   }
 
   console.error(`[Stellaris] Reindexing ${projectRoot}...`);
-  const result = await runReindex(projectRoot);
+  const result = await runReindex(projectRoot, force);
 
   // After first successful indexation, create .stellarisrc with auto_index=true
   if (result.files_processed > 0 && enableAutoIndex === undefined) {

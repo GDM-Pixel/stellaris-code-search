@@ -5,30 +5,51 @@ import { scanUsage, startWatcher } from './usage/scanner.js';
 import { checkIntegrity } from './indexer/integrity.js';
 import { runDbSnapshot } from './db/snapshot.js';
 
+/** Propagate .stellarisrc embedding settings into env vars if not already set. */
+function applyRcToEnv(rc: Awaited<ReturnType<typeof loadStellarisRc>>): void {
+  if (rc.embedding_provider && !process.env.EMBEDDING_PROVIDER) {
+    process.env.EMBEDDING_PROVIDER = rc.embedding_provider;
+  }
+  if (rc.embedding_model && !process.env.OPENAI_EMBEDDING_MODEL && !process.env.VOYAGE_MODEL && !process.env.OLLAMA_MODEL) {
+    const provider = process.env.EMBEDDING_PROVIDER ?? 'openai';
+    if (provider === 'voyage') process.env.VOYAGE_MODEL = rc.embedding_model;
+    else if (provider === 'ollama') process.env.OLLAMA_MODEL = rc.embedding_model;
+    else process.env.OPENAI_EMBEDDING_MODEL = rc.embedding_model;
+  }
+  if (rc.rerank_provider && !process.env.RERANK_PROVIDER) {
+    process.env.RERANK_PROVIDER = rc.rerank_provider;
+  }
+}
+
+/** Check that the active embedding provider has its API key configured. */
+function hasEmbeddingApiKey(): boolean {
+  const provider = (process.env.EMBEDDING_PROVIDER ?? 'openai').toLowerCase();
+  if (provider === 'ollama') return true; // No key needed
+  if (provider === 'voyage') return !!process.env.VOYAGE_API_KEY;
+  return !!process.env.OPENAI_API_KEY;
+}
+
 /**
  * Auto-index on startup (non-blocking).
  * Only runs if .stellarisrc has auto_index=true in the project root.
  * After indexing, runs an integrity check to purge orphaned chunks.
  */
 export async function autoIndex(): Promise<void> {
-  if (!process.env.OPENAI_API_KEY) {
-    console.error('[Stellaris] Skipping auto-index: OPENAI_API_KEY not set');
-    // Still run integrity check even without API key — it's read-only
-    try {
-      const projectRoot = findProjectRoot(process.cwd());
-      await checkIntegrity(projectRoot);
-    } catch {
-      // Non-fatal
-    }
-    return;
-  }
-
   try {
     const projectRoot = findProjectRoot(process.cwd());
     const rc = await loadStellarisRc(projectRoot);
+    applyRcToEnv(rc);
+
+    if (!hasEmbeddingApiKey()) {
+      const provider = process.env.EMBEDDING_PROVIDER ?? 'openai';
+      console.error(`[Stellaris] Skipping auto-index: no API key for provider '${provider}'`);
+      // Still run integrity check even without API key — it's read-only
+      try { await checkIntegrity(projectRoot); } catch { /* non-fatal */ }
+      return;
+    }
 
     if (!rc.auto_index) {
-      console.error('[Stellaris] Auto-index disabled. Use the reindex tool to index this project, or set auto_index=true in .stellarisrc');
+      console.error('[Stellaris] Auto-index disabled. Use the reindex tool or set auto_index=true in .stellarisrc');
       await checkIntegrity(projectRoot);
       return;
     }

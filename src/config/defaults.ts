@@ -37,7 +37,7 @@ export const DEFAULT_EXCLUDE = [
 ];
 
 export const SUPPORTED_EXTENSIONS = {
-  code: ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.php', '.html', '.css', '.astro', '.vue', '.svelte', '.scss', '.less', '.json', '.yaml', '.yml', '.sql', '.graphql', '.gql', '.prisma', '.toml'],
+  code: ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.php', '.html', '.css', '.astro', '.vue', '.svelte', '.scss', '.less', '.json', '.yaml', '.yml', '.sql', '.graphql', '.gql', '.prisma', '.toml', '.java', '.rb'],
   docs: ['.md', '.mdx'],
 } as const;
 
@@ -48,9 +48,9 @@ export const CHUNK_CONFIG = {
   smallFileThreshold: 50,
   /** Number of chunks to embed per OpenAI API call */
   embeddingBatchSize: 20,
-  /** OpenAI model for embeddings */
+  /** Default OpenAI model for embeddings (used when EMBEDDING_PROVIDER=openai) */
   embeddingModel: 'text-embedding-3-small' as const,
-  /** Embedding dimensions */
+  /** Default embedding dimensions — overridden dynamically by the active provider */
   embeddingDimensions: 1536,
   /**
    * Max lines for a single AST symbol chunk.
@@ -59,6 +59,9 @@ export const CHUNK_CONFIG = {
    */
   maxSymbolLines: 300,
 } as const;
+
+/** Supported embedding providers */
+export type EmbeddingProviderName = 'openai' | 'voyage' | 'ollama';
 
 export const LANCEDB_TABLE_NAME = 'code_chunks';
 

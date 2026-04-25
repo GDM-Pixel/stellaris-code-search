@@ -16,6 +16,7 @@ import { handleSearchDocs } from './tools/searchDocs.js';
 import { handleReindex, handleReindexFile } from './tools/reindex.js';
 import { handleGetFileTree } from './tools/getFileTree.js';
 import { handleGetFileOutline } from './tools/getFileOutline.js';
+import { handleGetFileFolded } from './tools/getFileFolded.js';
 import { handleGetSymbol } from './tools/getSymbol.js';
 import { handleGetDependencies } from './tools/getDependencies.js';
 import { handleGetDependents } from './tools/getDependents.js';
@@ -33,6 +34,8 @@ import { handleGetTopologicalOrder } from './tools/getTopologicalOrder.js';
 import { handleSimulateMove } from './tools/simulateMove.js';
 import { handleGetMostCoupled } from './tools/getMostCoupled.js';
 import { handleProjectHealth } from './tools/projectHealth.js';
+import { handleSessionBriefing } from './tools/sessionBriefing.js';
+import { handleDetectSignificantChanges } from './tools/detectSignificantChanges.js';
 import { handleGraphExport } from './tools/graphExport.js';
 import { handleUsageBreakdown } from './tools/usageBreakdown.js';
 import { autoIndex, autoScanUsage, autoDbSnapshot } from './startup.js';
@@ -49,7 +52,7 @@ if (!process.env.OPENAI_API_KEY) {
 const server = new Server(
   {
     name: 'stellaris-mcp',
-    version: '3.9.1',
+    version: '4.3.0',
   },
   {
     capabilities: {
@@ -64,7 +67,7 @@ const TOOLS = [
   {
     name: 'search_code',
     description:
-      'Semantic search in code files. Use natural language to find functions, components, hooks, classes, and types. Returns file paths, line numbers, and code previews ranked by relevance.',
+      'STEP 1 of token-efficient exploration. Semantic search in code (OpenAI embeddings). Returns a lightweight index: file paths, line numbers, short previews — NOT full source. Then: call `get_file_outline` for file structure, `get_file_folded` for signatures+JSDoc, and `get_symbol` ONLY for the specific symbol you need. Never `Read` whole files after this — you have better tools.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -107,7 +110,7 @@ const TOOLS = [
   {
     name: 'reindex',
     description:
-      'Force incremental reindex of the project codebase. Only re-embeds files that have changed since last index. Use this to initialize the index for the first time. After first indexation, auto-index is enabled for subsequent startups via .stellarisrc.',
+      'Force incremental reindex of the project codebase. Only re-embeds files that have changed since last index. Use this to initialize the index for the first time. After first indexation, auto-index is enabled for subsequent startups via .stellarisrc. Use force=true after switching embedding providers (deletes the old index automatically).',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -118,6 +121,10 @@ const TOOLS = [
         enable_auto_index: {
           type: 'boolean',
           description: 'Explicitly enable or disable automatic incremental indexing on startup. Writes to .stellarisrc in the project root.',
+        },
+        force: {
+          type: 'boolean',
+          description: 'Bypass embedding config mismatch guard. Required after switching EMBEDDING_PROVIDER — will delete and rebuild the entire index.',
         },
       },
     },
@@ -154,7 +161,7 @@ const TOOLS = [
   {
     name: 'get_file_outline',
     description:
-      'Get the symbol outline of a specific file. Lists all top-level functions, classes, types, components, and hooks with their line ranges. Also returns file imports, exports, and any TODO/FIXME warnings. No API call needed — uses AST parsing.',
+      'STEP 2 of token-efficient exploration. Lists top-level symbols (functions/classes/types/hooks) with line ranges + imports/exports. ~200 tokens. After this, call `get_file_folded` for signatures+JSDoc, or `get_symbol` for full source of ONE symbol. NEVER `Read` the whole file — you have better tools. Uses AST, no API.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -167,9 +174,28 @@ const TOOLS = [
     },
   },
   {
+    name: 'get_file_folded',
+    description:
+      'STEP 3 of token-efficient exploration. Returns all symbols with signatures + JSDoc but NO function bodies — folded view under a token budget. Ideal when you need to understand a file structurally without reading every implementation. Falls back to truncated:true if budget exceeded. AST-based, no API.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        file: {
+          type: 'string',
+          description: 'Relative file path from project root (e.g., "src/tools/searchCode.ts")',
+        },
+        token_budget: {
+          type: 'number',
+          description: 'Max tokens for returned signatures+JSDoc (default: 4000). Symbols beyond the budget are dropped, truncated=true flagged.',
+        },
+      },
+      required: ['file'],
+    },
+  },
+  {
     name: 'get_symbol',
     description:
-      'Get the full source code of a specific symbol (function, class, type, etc.) from a file. By default includes file context: imports, exports, sibling symbols, and TODO/FIXME warnings — so the LLM understands the surrounding code without reading the entire file. No API call needed.',
+      'STEP 4 of token-efficient exploration — the only step that returns full source. Fetches ONE symbol (function/class/type) with file context (imports, siblings, warnings). Use ONLY after `search_code`/`get_file_outline`/`get_file_folded` identified the symbol. No API.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -453,6 +479,30 @@ const TOOLS = [
     },
   },
   {
+    name: 'session_briefing',
+    description: 'Condensed project briefing designed for Claude Code SessionStart hook. Returns: graph health summary, cycles, and recent git activity with blast-radius ranking — all under ~800 tokens. Degrades gracefully if no git or no graph. Pairs with nova-mind-cloud searchMemory for complete context priming.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        days: { type: 'number', description: 'Git history window in days (default: 7)' },
+        max_recent_files: { type: 'number', description: 'Max recent files to list (default: 8)' },
+        format: { type: 'string', enum: ['markdown', 'json'], description: 'Output format (default: markdown)' },
+      },
+    },
+  },
+  {
+    name: 'detect_significant_changes',
+    description: 'Heuristic detector for "was this session technically significant?" Returns significant:true + signals if git diff exceeds thresholds (default: 100 lines or 5 files) or graph has cycles. Intended for Stop/SessionEnd hooks to prompt memorization via nova-mind-cloud storeMemory. No API.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        base: { type: 'string', description: 'Git base ref to diff against (default: HEAD)' },
+        lines_threshold: { type: 'number', description: 'Min total lines changed to be significant (default: 100)' },
+        files_threshold: { type: 'number', description: 'Min files changed to be significant (default: 5)' },
+      },
+    },
+  },
+  {
     name: 'usage_breakdown',
     description: 'Show where Claude Code tokens go: task category breakdown (coding, debugging, feature, refactoring, testing, exploration, planning, delegation, git, build_deploy, conversation, brainstorming), MCP server call counts, and core tool usage. Inspired by Codeburn. No API key required.',
     inputSchema: {
@@ -536,6 +586,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleGetFileTree(args ?? {});
       case 'get_file_outline':
         return await handleGetFileOutline(args ?? {});
+      case 'get_file_folded':
+        return await handleGetFileFolded(args ?? {});
+      case 'session_briefing':
+        return await handleSessionBriefing(args ?? {});
+      case 'detect_significant_changes':
+        return await handleDetectSignificantChanges(args ?? {});
       case 'get_symbol':
         return await handleGetSymbol(args ?? {});
       case 'get_dependencies':

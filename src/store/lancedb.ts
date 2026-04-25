@@ -1,7 +1,7 @@
 import * as lancedb from '@lancedb/lancedb';
 import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
-import { LANCEDB_TABLE_NAME, CHUNK_CONFIG } from '../config/defaults.js';
+import { LANCEDB_TABLE_NAME } from '../config/defaults.js';
 import type { EmbeddedChunk } from '../indexer/embedder.js';
 
 export interface SearchResult {
@@ -40,13 +40,28 @@ export function closeLanceStore(): void {
 }
 
 /**
- * Get or create the code_chunks table
+ * Get or create the code_chunks table.
+ * If dims changes (provider switch), drop and recreate the table.
  */
-async function getTable(connection: lancedb.Connection): Promise<lancedb.Table> {
+async function getTable(connection: lancedb.Connection, dims?: number): Promise<lancedb.Table> {
   const tableNames = await connection.tableNames();
+  const effectiveDims = dims ?? 1536;
 
   if (tableNames.includes(LANCEDB_TABLE_NAME)) {
-    return connection.openTable(LANCEDB_TABLE_NAME);
+    const existing = await connection.openTable(LANCEDB_TABLE_NAME);
+    // Check dims via schema — if table exists but dims mismatch, drop and recreate
+    try {
+      const schema = await existing.schema();
+      const vectorField = schema.fields.find((f: any) => f.name === 'vector');
+      if (vectorField && (vectorField.type as any)?.listSize !== effectiveDims) {
+        console.error(`[Stellaris] LanceDB dims mismatch (stored=${(vectorField.type as any).listSize}, current=${effectiveDims}) — recreating table`);
+        await connection.dropTable(LANCEDB_TABLE_NAME);
+      } else {
+        return existing;
+      }
+    } catch {
+      return existing;
+    }
   }
 
   // Create with a dummy record to define schema, then delete it
@@ -59,7 +74,7 @@ async function getTable(connection: lancedb.Connection): Promise<lancedb.Table> 
       content: '',
       line_start: 0,
       line_end: 0,
-      vector: new Array(CHUNK_CONFIG.embeddingDimensions).fill(0),
+      vector: new Array(effectiveDims).fill(0),
     },
   ]);
   await table.delete('id = "__init__"');
@@ -68,16 +83,18 @@ async function getTable(connection: lancedb.Connection): Promise<lancedb.Table> 
 }
 
 /**
- * Add embedded chunks to the store
+ * Add embedded chunks to the store.
+ * dims must match the embedding provider configured at index time.
  */
 export async function addChunks(
   projectRoot: string,
   chunks: EmbeddedChunk[],
+  dims?: number,
 ): Promise<void> {
   if (chunks.length === 0) return;
 
   const connection = await connectStore(projectRoot);
-  const table = await getTable(connection);
+  const table = await getTable(connection, dims);
 
   const records = chunks.map((c) => ({
     id: c.id,
@@ -118,7 +135,7 @@ export async function searchByVector(
   filter?: string,
 ): Promise<SearchResult[]> {
   const connection = await connectStore(projectRoot);
-  const table = await getTable(connection);
+  const table = await getTable(connection, queryVector.length);
 
   let query = table.search(queryVector).limit(limit);
 

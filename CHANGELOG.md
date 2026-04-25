@@ -1,5 +1,105 @@
 # Changelog
 
+## [4.3.0] - 2026-04-25
+
+### Added — Embedding providers pluggables (P0)
+
+- **Multi-provider embeddings** — Stellaris n'est plus OpenAI-only. Nouveau système factory dans `src/indexer/providers/` :
+  - `openai.ts` — `text-embedding-3-small` (défaut, 1536 dims)
+  - `voyage.ts` — `voyage-code-3` (1024 dims) — mesuré supérieur à OpenAI small sur du code
+  - `ollama.ts` — `nomic-embed-text` (768 dims) — 100% local, zéro réseau
+- **Configuration** : via env var `EMBEDDING_PROVIDER=openai|voyage|ollama` ou `.stellarisrc` (`embedding_provider`, `embedding_model`)
+- **Garde-fou anti-corruption** — `_index_config` (provider + model + dims) sauvegardé dans `meta.json`. Si le provider change entre deux runs, Stellaris refuse le reindex incrémental et demande `force=true`. Évite la corruption silencieuse de LanceDB (table typée sur les dims).
+- **Dims dynamique** — LanceDB détecte et recrée la table si les dims changent (changement de provider). Pass-through propre depuis `addChunks` et `searchByVector`.
+- **`reindex` tool** — nouveau paramètre `force: boolean`. Avec `force=true`, supprime LanceDB + meta.json avant de reindexer (requis après un changement de provider).
+
+### Added — Re-ranking optionnel (P2)
+
+- **`src/search/reranker.ts`** — re-ranker cross-encoder post-RRF :
+  - `RERANK_PROVIDER=voyage` → Voyage `rerank-2` (recommandé)
+  - `RERANK_PROVIDER=cohere` → Cohere `rerank-v3.5`
+  - `off` (défaut) — comportement identique à avant
+- Branché dans `hybrid.ts` après la fusion RRF : passe les top-N×2 candidats au reranker, retourne les top-N reranked.
+- Fallback silencieux sur l'ordre RRF si l'appel reranker échoue.
+- Amélioration de pertinence top-5 estimée : +15-30% (mesuré sur Voyage rerank-2 vs RRF seul).
+
+### Added — Java + Ruby (P1)
+
+- **`tree-sitter-java`** + **`tree-sitter-ruby`** ajoutés aux dépendances
+- Parsing AST natif pour `.java` (classes, interfaces, enums, annotations) et `.rb` (classes, modules, méthodes)
+- Import extraction : `import com.example.Foo` (Java), `require` / `require_relative` (Ruby)
+- Extensions `.java`, `.rb` ajoutées à `SUPPORTED_EXTENSIONS` — indexées automatiquement
+
+### Architecture
+
+```
+src/
+  indexer/
+    providers/
+      base.ts        # NEW — interface EmbeddingProvider + retry helper
+      openai.ts      # NEW — provider OpenAI (extrait de embedder.ts)
+      voyage.ts      # NEW — provider Voyage AI
+      ollama.ts      # NEW — provider Ollama (local)
+    embedder.ts      # REFACTORED — factory + LRU cache générique
+    hasher.ts        # EXTENDED — _index_config sentinel + saveIndexConfig/getStoredIndexConfig
+  search/
+    reranker.ts      # NEW — Voyage / Cohere re-ranking post-RRF
+    hybrid.ts        # EXTENDED — appel reranker optionnel après RRF
+  config/
+    defaults.ts      # EXTENDED — EmbeddingProviderName, Java/Ruby extensions
+    stellarisrc.ts   # EXTENDED — embedding_provider, embedding_model, rerank_provider
+  store/
+    lancedb.ts       # EXTENDED — dims dynamique, drop+recreate si dims change
+  tools/
+    reindex.ts       # EXTENDED — garde-fou config, force=true, saveIndexConfig
+```
+
+## [4.0.0] - 2026-04-17
+
+### Added — Token-efficient exploration (inspired by claude-mem)
+
+- **`get_file_folded` tool** — new AST-based tool returning all symbols with signatures + JSDoc but NO function bodies, under a configurable `token_budget` (default 4000). When budget is exceeded, symbols are dropped tail-first and `truncated: true` is flagged. Bridges the gap between `get_file_outline` (200 tokens, symbol names only) and `get_symbol` (full source of one symbol). Zero API required — purely tree-sitter.
+- **Progressive disclosure descriptions** — `search_code`, `get_file_outline`, `get_file_folded`, `get_symbol` descriptions now explicitly enforce a token-efficient 4-step workflow: search index → outline → folded → symbol. Claude is instructed never to `Read` a file after `search_code`. Non-breaking.
+
+### Added — Claude Code hook integration
+
+- **`session_briefing` tool** — returns a condensed markdown briefing of project state: graph health summary, top cycle, and recent git activity with blast-radius ranking. Target: <800 tokens. Degrades gracefully if git history or graph index is missing.
+- **`scripts/session-start.mjs`** — Claude Code `SessionStart` hook script. Emits the briefing on stdout (injected into session context) with a 3s timeout. Silently exits if Stellaris is not built or if the current directory is not a git project.
+- **`detect_significant_changes` tool** — heuristic detector that scores a session as "significant" if git diff exceeds thresholds (100 lines or 5 files) or the graph has circular dependencies. Returns signals + recommendation to call `nova-mind-cloud storeMemory`.
+- **`scripts/session-stop.mjs`** — Claude Code `Stop` hook script. When significance is detected, emits a structured reminder on stdout nudging the assistant to memorize the technical work via `nova-mind-cloud storeMemory` (category `technical.development`). Never calls storeMemory itself — only prompts.
+
+### Design philosophy
+
+- **Stellaris stays a code-brain, nova-mind-cloud stays the memory-brain.** No local observation store added — we explicitly rejected duplicating `nova-mind-cloud` (Supabase pgvector + Knowledge Graph) in a local SQLite. Stellaris becomes the **technical sensor** that feeds nova-mind-cloud when pertinent, not a parallel memory system.
+
+### Architecture
+
+```
+src/
+  tools/
+    getFileFolded.ts              # NEW — folded structural view with token budget
+    sessionBriefing.ts            # NEW — SessionStart briefing composer
+    detectSignificantChanges.ts   # NEW — Stop hook detector
+scripts/
+  session-start.mjs               # NEW — SessionStart hook
+  session-stop.mjs                # NEW — Stop hook
+```
+
+### Activation (user-side `~/.claude/settings.json`)
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node /path/to/stellaris/scripts/session-start.mjs" }] }],
+    "Stop":         [{ "hooks": [{ "type": "command", "command": "node /path/to/stellaris/scripts/session-stop.mjs"  }] }]
+  }
+}
+```
+
+### Deferred to v4.1.0
+
+- **Unified HTTP worker** (replacing ephemeral dashboards on ports 8090/8091) — requires deeper refactor of `usageDashboard` and `graphView`, deferred to avoid risk to stable dashboards in v4.0.0.
+
 ## [3.9.1] - 2026-04-14
 
 ### Fixed

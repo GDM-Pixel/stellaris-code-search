@@ -9,6 +9,8 @@ import RustLanguage from 'tree-sitter-rust';
 import PHPLanguage from 'tree-sitter-php';
 import HTMLLanguage from 'tree-sitter-html';
 import CSSLanguage from 'tree-sitter-css';
+import JavaLanguage from 'tree-sitter-java';
+import RubyLanguage from 'tree-sitter-ruby';
 import { CHUNK_CONFIG } from '../config/defaults.js';
 import type { FileInfo } from './scanner.js';
 
@@ -94,6 +96,18 @@ const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     topLevelTypes: ['rule_set', 'media_statement', 'keyframes_statement', 'import_statement'],
     nameExtractor: extractCSSName,
     chunkClassifier: () => 'rule',
+  },
+  '.java': {
+    language: JavaLanguage,
+    topLevelTypes: ['class_declaration', 'interface_declaration', 'enum_declaration', 'annotation_type_declaration'],
+    nameExtractor: extractJavaName,
+    chunkClassifier: classifyJava,
+  },
+  '.rb': {
+    language: RubyLanguage,
+    topLevelTypes: ['class', 'module', 'method', 'singleton_method'],
+    nameExtractor: extractRubyName,
+    chunkClassifier: classifyRuby,
   },
 };
 
@@ -249,6 +263,40 @@ function extractCSSName(node: Parser.SyntaxNode): string | null {
   return null;
 }
 
+// --- Java name extraction ---
+
+function extractJavaName(node: Parser.SyntaxNode): string | null {
+  const nameNode = node.children.find((c) => c.type === 'identifier');
+  return nameNode?.text ?? null;
+}
+
+function classifyJava(_name: string, nodeType: string): Chunk['chunk_type'] {
+  if (nodeType === 'interface_declaration') return 'type';
+  if (nodeType === 'enum_declaration') return 'type';
+  if (nodeType === 'annotation_type_declaration') return 'type';
+  return 'class';
+}
+
+// --- Ruby name extraction ---
+
+function extractRubyName(node: Parser.SyntaxNode): string | null {
+  if (node.type === 'method' || node.type === 'singleton_method') {
+    const nameNode = node.children.find((c) => c.type === 'identifier' || c.type === 'constant');
+    return nameNode?.text ?? null;
+  }
+  if (node.type === 'class' || node.type === 'module') {
+    const nameNode = node.children.find((c) => c.type === 'constant' || c.type === 'scope_resolution');
+    return nameNode?.text ?? null;
+  }
+  return null;
+}
+
+function classifyRuby(_name: string, nodeType: string): Chunk['chunk_type'] {
+  if (nodeType === 'class') return 'class';
+  if (nodeType === 'module') return 'type';
+  return 'method';
+}
+
 // --- Generic AST chunking ---
 
 function buildHeader(file: FileInfo, imports: string[], exports: string[]): string {
@@ -278,6 +326,14 @@ export function extractImports(rootNode: Parser.SyntaxNode, extension: string): 
       // Rust
       const path = child.children.find((c) => c.type === 'scoped_identifier' || c.type === 'identifier');
       if (path) imports.push(path.text);
+    } else if (child.type === 'import_declaration') {
+      // Java: import com.example.Foo;
+      const name = child.children.find((c) => c.type === 'scoped_identifier' || c.type === 'identifier');
+      if (name) imports.push(name.text);
+    } else if (child.type === 'require' || child.type === 'require_relative') {
+      // Ruby: require 'foo' / require_relative 'bar'
+      const arg = child.children.find((c) => c.type === 'string');
+      if (arg) imports.push(arg.text.replace(/['"]/g, ''));
     }
   }
 

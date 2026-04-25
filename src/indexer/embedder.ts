@@ -1,25 +1,56 @@
-import OpenAI from 'openai';
-import { CHUNK_CONFIG } from '../config/defaults.js';
+import type { EmbeddingProvider } from './providers/base.js';
+import { OpenAIProvider } from './providers/openai.js';
+import { VoyageProvider } from './providers/voyage.js';
+import { OllamaProvider } from './providers/ollama.js';
 import type { Chunk } from './chunker.js';
 
 export interface EmbeddedChunk extends Chunk {
   vector: number[];
 }
 
-let client: OpenAI | null = null;
+export interface EmbeddingConfig {
+  provider: string;
+  model: string;
+  dims: number;
+}
 
 // LRU cache for query embeddings — avoids redundant API calls for repeated queries
 const queryEmbedCache = new Map<string, number[]>();
 const QUERY_CACHE_MAX = 100;
 
-function getClient(): OpenAI {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY is required for semantic search and indexing. Set it in your environment or .env file.');
+let activeProvider: EmbeddingProvider | null = null;
+
+/**
+ * Build the embedding provider from environment variables.
+ * Priority: EMBEDDING_PROVIDER env > default (openai).
+ */
+export function createProvider(): EmbeddingProvider {
+  const providerName = (process.env.EMBEDDING_PROVIDER ?? 'openai').toLowerCase();
+
+  switch (providerName) {
+    case 'voyage':
+      return new VoyageProvider(process.env.VOYAGE_MODEL);
+    case 'ollama': {
+      const dims = process.env.OLLAMA_DIMS ? parseInt(process.env.OLLAMA_DIMS, 10) : undefined;
+      return new OllamaProvider(process.env.OLLAMA_MODEL, dims);
+    }
+    case 'openai':
+    default:
+      return new OpenAIProvider(process.env.OPENAI_EMBEDDING_MODEL);
   }
-  if (!client) {
-    client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
+
+function getProvider(): EmbeddingProvider {
+  if (!activeProvider) {
+    activeProvider = createProvider();
   }
-  return client;
+  return activeProvider;
+}
+
+/** Returns the current embedding configuration (provider + model + dims). */
+export function getEmbeddingConfig(): EmbeddingConfig {
+  const p = getProvider();
+  return { provider: p.name, model: p.model, dims: p.dims };
 }
 
 /**
@@ -28,14 +59,9 @@ function getClient(): OpenAI {
 export async function embedText(text: string): Promise<number[]> {
   if (queryEmbedCache.has(text)) return queryEmbedCache.get(text)!;
 
-  const openai = getClient();
-  const response = await openai.embeddings.create({
-    model: CHUNK_CONFIG.embeddingModel,
-    input: text,
-  });
-  const vector = response.data[0].embedding;
+  const provider = getProvider();
+  const [vector] = await provider.embed([text]);
 
-  // Evict oldest entry if at capacity
   if (queryEmbedCache.size >= QUERY_CACHE_MAX) {
     queryEmbedCache.delete(queryEmbedCache.keys().next().value!);
   }
@@ -45,62 +71,18 @@ export async function embedText(text: string): Promise<number[]> {
 }
 
 /**
- * Embed chunks in batches
+ * Embed chunks in batches using the active provider.
  */
 export async function embedChunks(chunks: Chunk[]): Promise<EmbeddedChunk[]> {
-  const openai = getClient();
-  const results: EmbeddedChunk[] = [];
-  const batchSize = CHUNK_CONFIG.embeddingBatchSize;
+  if (chunks.length === 0) return [];
 
-  for (let i = 0; i < chunks.length; i += batchSize) {
-    const batch = chunks.slice(i, i + batchSize);
-    const texts = batch.map((c) => c.content);
+  const provider = getProvider();
+  const texts = chunks.map(c => c.content);
 
-    try {
-      const response = await openai.embeddings.create({
-        model: CHUNK_CONFIG.embeddingModel,
-        input: texts,
-      });
+  const vectors = await provider.embed(texts);
 
-      for (let j = 0; j < batch.length; j++) {
-        results.push({
-          ...batch[j],
-          vector: response.data[j].embedding,
-        });
-      }
-
-      const progress = Math.min(i + batchSize, chunks.length);
-      console.error(`[Stellaris] Embedded ${progress}/${chunks.length} chunks`);
-    } catch (error: any) {
-      console.error(`[Stellaris] Embedding batch failed (offset ${i}):`, error.message);
-      // Retry individual chunks with exponential backoff
-      // Avoids hammering the API immediately after a rate limit (429)
-      for (const chunk of batch) {
-        let embedded = false;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            if (attempt > 0) {
-              await new Promise(r => setTimeout(r, 500 * 2 ** (attempt - 1)));
-            }
-            const single = await openai.embeddings.create({
-              model: CHUNK_CONFIG.embeddingModel,
-              input: chunk.content,
-            });
-            results.push({ ...chunk, vector: single.data[0].embedding });
-            embedded = true;
-            break;
-          } catch (retryError: any) {
-            if (attempt === 2) {
-              console.error(`[Stellaris] Skipping chunk ${chunk.name}: ${retryError.message}`);
-            }
-          }
-        }
-        if (!embedded) {
-          // Skip chunk — indexing continues without it
-        }
-      }
-    }
-  }
-
-  return results;
+  return chunks.map((chunk, i) => ({
+    ...chunk,
+    vector: vectors[i] ?? new Array(provider.dims).fill(0),
+  }));
 }
