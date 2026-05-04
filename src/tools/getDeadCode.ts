@@ -8,6 +8,19 @@ import { findProjectRoot } from '../indexer/scanner.js';
 import { getAllEdges, hasGraph } from '../graph/store.js';
 import { loadMetaIndex } from '../indexer/hasher.js';
 
+/** Extensions that are never imported via JS/TS import statements — always in_degree 0, not dead code */
+export const NON_IMPORTABLE_EXTENSIONS = new Set([
+  '.css', '.scss', '.less', '.sass',
+  '.html', '.htm',
+  '.json', '.yaml', '.yml', '.toml',
+  '.md', '.mdx', '.txt', '.rst',
+  '.sql', '.graphql', '.gql', '.prisma',
+  '.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.avif',
+  '.woff', '.woff2', '.ttf', '.eot', '.otf',
+  '.env', '.env.local', '.env.production',
+  '.lock',
+]);
+
 const DEFAULT_ENTRY_PATTERNS = [
   /^index\.[a-z]+$/i,
   /\/index\.[a-z]+$/i,
@@ -19,11 +32,12 @@ const DEFAULT_ENTRY_PATTERNS = [
   /\.test\.[a-z]+$/i,
   /\.spec\.[a-z]+$/i,
   /\.stories\.[a-z]+$/i,
+  /\.d\.ts$/i,
   /\/__tests__\//,
   /\/tests?\//,
 ];
 
-function isEntryPoint(filePath: string, extraPatterns: RegExp[]): boolean {
+export function isEntryPoint(filePath: string, extraPatterns: RegExp[] = []): boolean {
   const all = [...DEFAULT_ENTRY_PATTERNS, ...extraPatterns];
   return all.some(p => p.test(filePath));
 }
@@ -67,7 +81,11 @@ export async function handleGetDeadCode(args: Record<string, unknown>) {
 
   const deadFiles = allFiles.filter(f => {
     const deg = inDegree.get(f) ?? 0;
-    return deg === 0 && !isEntryPoint(f, extraPatterns);
+    if (deg > 0) return false;
+    // Skip non-importable files (CSS, JSON, images, etc.) — they always have 0 in-degree
+    const ext = f.substring(f.lastIndexOf('.'));
+    if (NON_IMPORTABLE_EXTENSIONS.has(ext)) return false;
+    return !isEntryPoint(f, extraPatterns);
   });
 
   deadFiles.sort();

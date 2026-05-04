@@ -99,19 +99,28 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .cam-btn:hover { background: var(--border); color: var(--accent2); }
 #screenshot-btn { width: 100%; padding: 6px 10px; background: var(--accent2); border: none; border-radius: 4px; color: #fff; font-size: 12px; font-weight: 500; cursor: pointer; margin-top: 6px; }
 #screenshot-btn:hover { opacity: 0.85; }
-.folder-tree { list-style: none; padding: 0; margin: 0; font-size: 11px; }
-.folder-tree ul { list-style: none; padding-left: 12px; margin: 0; }
-.folder-item, .file-leaf { padding: 2px 0; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; }
-.folder-item:hover .folder-name, .file-leaf:hover .file-leaf-name { color: #3b82f6; }
-.folder-toggle { font-size: 9px; color: #64748b; min-width: 10px; }
-.folder-name { color: #94a3b8; font-family: var(--mono); }
-.folder-name.highlighted { color: #e0366f; }
-.file-leaf-name { color: #64748b; font-family: var(--mono); text-overflow: ellipsis; overflow: hidden; }
 .reset-folder-btn { width: 100%; padding: 5px 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); font-size: 11px; cursor: pointer; margin-top: 6px; }
 .reset-folder-btn:hover { background: var(--border); color: var(--text); }
+/* Tree UX v2 */
+.tree-item { position: relative; }
+.tree-folder { list-style: none; }
+.tree-folder > .tree-children { margin-left: 14px; padding-left: 6px; border-left: 1px solid rgba(255,255,255,0.07); overflow: hidden; transition: max-height 0.22s ease; }
+.tree-folder.collapsed > .tree-children { max-height: 0 !important; }
+.tree-folder > .tree-label .chevron { display: inline-block; width: 12px; text-align: center; transition: transform 0.18s; font-size: 9px; color: #64748b; flex-shrink: 0; }
+.tree-folder.collapsed > .tree-label .chevron { transform: rotate(-90deg); }
+.tree-root { list-style: none; padding: 0; margin: 0; }
+.tree-label { display: flex; align-items: center; gap: 5px; padding: 2px 5px; border-radius: 4px; cursor: pointer; font-size: 11px; font-family: var(--mono); white-space: nowrap; overflow: hidden; }
+.tree-label:hover { background: rgba(255,255,255,0.05); }
+.tree-label.selected { background: rgba(224,54,111,0.2); }
+.tree-label.folder-highlighted { color: var(--accent); }
+.lang-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.folder-icon { font-size: 11px; flex-shrink: 0; }
+.tree-name { flex: 1; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; }
+.tree-name.file-name { color: #64748b; }
+.file-count { font-size: 10px; color: #475569; margin-left: auto; padding-right: 2px; flex-shrink: 0; }
 .ext-grid { display: flex; flex-wrap: wrap; gap: 5px; }
-.ext-pill { padding: 2px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; border: 1px solid transparent; font-family: var(--mono); transition: opacity .15s; }
-.ext-pill.off { opacity: 0.35; }
+.ext-pill { padding: 2px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; border: 1px solid transparent; font-family: var(--mono); transition: all .15s; }
+.ext-pill.off { background: transparent !important; opacity: 1; }
 #graph-container { flex: 1; position: relative; overflow: hidden; }
 #graph-canvas { width: 100%; height: 100%; }
 .graph-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); flex-direction: column; gap: 12px; }
@@ -601,117 +610,175 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
   });
 
   function buildFolderTree(nodes) {
-    var tree = {};
+    // Build a recursive tree from node paths
+    var root = { __files: [], __dirs: {} };
     nodes.forEach(function(n) {
       var parts = n.id.replace(/\\\\/g, '/').split('/');
-      var cur = tree;
-      parts.forEach(function(p, i) {
-        if (!cur[p]) cur[p] = { __files: [], __dirs: {} };
+      var cur = root;
+      for (var i = 0; i < parts.length; i++) {
+        var p = parts[i];
         if (i === parts.length - 1) {
-          cur[p].__files = cur[p].__files || [];
-          cur[p].__files.push(n.id);
+          cur.__files.push(n.id);
         } else {
-          cur = cur[p].__dirs = cur[p].__dirs || {};
+          if (!cur.__dirs[p]) cur.__dirs[p] = { __files: [], __dirs: {} };
+          cur = cur.__dirs[p];
         }
-      });
+      }
     });
 
-    var ul = document.createElement('ul');
-    ul.className = 'folder-tree';
-
-    function renderTree(obj, depth) {
-      if (depth > 3) return;
-      Object.keys(obj).sort().forEach(function(key) {
-        if (key === '__files' || key === '__dirs') return;
-        var item = obj[key];
-        var li = document.createElement('li');
-        li.className = 'folder-item';
-        li.setAttribute('data-prefix', key + '/');
-
-        var toggle = document.createElement('span');
-        toggle.className = 'folder-toggle';
-        toggle.textContent = '▶';
-        toggle.style.display = depth >= 2 ? 'none' : 'inline';
-
-        var nameSpan = document.createElement('span');
-        nameSpan.className = 'folder-name';
-        nameSpan.textContent = key + '/';
-
-        var subUl = document.createElement('ul');
-        subUl.style.display = depth >= 2 ? 'none' : 'block';
-
-        if (item.__files) {
-          item.__files.forEach(function(fid) {
-            var fli = document.createElement('li');
-            fli.className = 'file-leaf';
-            fli.setAttribute('data-id', fid);
-            var icon = document.createElement('span');
-            icon.className = 'file-icon';
-            icon.textContent = '·';
-            var fname = document.createElement('span');
-            fname.className = 'file-leaf-name';
-            fname.textContent = fid.split('/').pop();
-            fli.appendChild(icon);
-            fli.appendChild(fname);
-            fli.addEventListener('click', function() { openFilePanel(fid); });
-            subUl.appendChild(fli);
-          });
-        }
-
-        renderTree(item.__dirs, depth + 1);
-
-        Object.keys(item.__dirs || {}).sort().forEach(function(subkey) {
-          var subli = document.createElement('li');
-          subli.className = 'folder-item';
-          var subt = document.createElement('span');
-          subt.className = 'folder-toggle';
-          subt.textContent = '▶';
-          subt.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var isOpen = subUl.style.display !== 'none';
-            subUl.style.display = isOpen ? 'none' : 'block';
-            subt.textContent = isOpen ? '▶' : '▼';
-          });
-          var subn = document.createElement('span');
-          subn.className = 'folder-name';
-          subn.textContent = subkey + '/';
-          subli.appendChild(subt);
-          subli.appendChild(subn);
-          var subsub = document.createElement('ul');
-          subsub.style.display = 'none';
-          subli.appendChild(subsub);
-          subUl.appendChild(subli);
-        });
-
-        toggle.addEventListener('click', function(e) {
-          e.stopPropagation();
-          var isOpen = subUl.style.display !== 'none';
-          subUl.style.display = isOpen ? 'none' : 'block';
-          toggle.textContent = isOpen ? '▶' : '▼';
-        });
-
-        nameSpan.addEventListener('click', function(e) {
-          e.stopPropagation();
-          var prefix = key + '/';
-          if (highlightFolder === prefix) {
-            highlightFolder = null;
-            nameSpan.classList.remove('highlighted');
-          } else {
-            document.querySelectorAll('.folder-name').forEach(function(f) { f.classList.remove('highlighted'); });
-            highlightFolder = prefix;
-            nameSpan.classList.add('highlighted');
-          }
-          refreshColors();
-        });
-
-        li.appendChild(toggle);
-        li.appendChild(nameSpan);
-        li.appendChild(subUl);
-        ul.appendChild(li);
-      });
+    function countFiles(node) {
+      var c = node.__files.length;
+      Object.keys(node.__dirs).forEach(function(k) { c += countFiles(node.__dirs[k]); });
+      return c;
     }
 
-    renderTree(tree, 0);
+    // Build full prefix path for a folder given ancestor prefixes
+    function renderNode(dirObj, dirName, fullPrefix, depth) {
+      var li = document.createElement('li');
+      li.className = 'tree-folder' + (depth >= 2 ? ' collapsed' : '');
+
+      var label = document.createElement('div');
+      label.className = 'tree-label';
+
+      var chevron = document.createElement('span');
+      chevron.className = 'chevron';
+      chevron.textContent = '▾';
+
+      var folderIcon = document.createElement('span');
+      folderIcon.className = 'folder-icon';
+      folderIcon.textContent = depth === 0 ? '📁' : '📂';
+
+      var nameSpan = document.createElement('span');
+      nameSpan.className = 'tree-name';
+      nameSpan.textContent = dirName + '/';
+
+      var countSpan = document.createElement('span');
+      countSpan.className = 'file-count';
+      countSpan.textContent = countFiles(dirObj);
+
+      label.appendChild(chevron);
+      label.appendChild(folderIcon);
+      label.appendChild(nameSpan);
+      label.appendChild(countSpan);
+
+      // Toggle collapse
+      label.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var isCollapsed = li.classList.contains('collapsed');
+        li.classList.toggle('collapsed');
+        var children = li.querySelector('.tree-children');
+        if (children) {
+          var total = countFiles(dirObj) * 22 + 4;
+          children.style.maxHeight = isCollapsed ? total + 'px' : '0px';
+        }
+      });
+
+      // Single-click: highlight folder
+      nameSpan.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (highlightFolder === fullPrefix) {
+          highlightFolder = null;
+          document.querySelectorAll('.tree-label.folder-highlighted').forEach(function(el) { el.classList.remove('folder-highlighted'); });
+        } else {
+          document.querySelectorAll('.tree-label.folder-highlighted').forEach(function(el) { el.classList.remove('folder-highlighted'); });
+          highlightFolder = fullPrefix;
+          label.classList.add('folder-highlighted');
+        }
+        refreshColors();
+      });
+
+      // Double-click: filter graph to folder
+      label.addEventListener('dblclick', function(e) {
+        e.stopPropagation();
+        focusFolderPrefix = fullPrefix;
+        elResetFolder.style.display = 'block';
+        focusFile = null;
+        renderGraph();
+      });
+
+      var children = document.createElement('ul');
+      children.className = 'tree-children';
+      var totalH = countFiles(dirObj) * 22 + 4;
+      children.style.maxHeight = depth >= 2 ? '0px' : totalH + 'px';
+
+      // Dirs first (sorted), then files (sorted)
+      var subDirKeys = Object.keys(dirObj.__dirs).sort(function(a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
+      subDirKeys.forEach(function(k) {
+        children.appendChild(renderNode(dirObj.__dirs[k], k, fullPrefix + k + '/', depth + 1));
+      });
+
+      var sortedFiles = dirObj.__files.slice().sort(function(a, b) {
+        return a.split('/').pop().toLowerCase().localeCompare(b.split('/').pop().toLowerCase());
+      });
+      sortedFiles.forEach(function(fid) {
+        var fli = document.createElement('li');
+        fli.className = 'tree-item';
+        fli.setAttribute('data-id', fid);
+
+        var flabel = document.createElement('div');
+        flabel.className = 'tree-label';
+        flabel.setAttribute('data-nodeid', fid);
+
+        var ext = fid.substring(fid.lastIndexOf('.'));
+        var dot = document.createElement('span');
+        dot.className = 'lang-dot';
+        dot.style.background = langColor(ext);
+
+        var fname = document.createElement('span');
+        fname.className = 'tree-name file-name';
+        fname.textContent = fid.split('/').pop();
+
+        flabel.appendChild(dot);
+        flabel.appendChild(fname);
+        flabel.addEventListener('click', function(e) {
+          e.stopPropagation();
+          document.querySelectorAll('.tree-label.selected').forEach(function(el) { el.classList.remove('selected'); });
+          flabel.classList.add('selected');
+          openFilePanel(fid);
+        });
+
+        fli.appendChild(flabel);
+        children.appendChild(fli);
+      });
+
+      li.appendChild(label);
+      li.appendChild(children);
+      return li;
+    }
+
+    var ul = document.createElement('ul');
+    ul.className = 'tree-root';
+
+    var topDirs = Object.keys(root.__dirs).sort(function(a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
+    topDirs.forEach(function(k) {
+      ul.appendChild(renderNode(root.__dirs[k], k, k + '/', 0));
+    });
+    // Files at root level
+    root.__files.slice().sort().forEach(function(fid) {
+      var fli = document.createElement('li');
+      fli.className = 'tree-item';
+      var flabel = document.createElement('div');
+      flabel.className = 'tree-label';
+      flabel.setAttribute('data-nodeid', fid);
+      var ext = fid.substring(fid.lastIndexOf('.'));
+      var dot = document.createElement('span');
+      dot.className = 'lang-dot';
+      dot.style.background = langColor(ext);
+      var fname = document.createElement('span');
+      fname.className = 'tree-name file-name';
+      fname.textContent = fid.split('/').pop();
+      flabel.appendChild(dot);
+      flabel.appendChild(fname);
+      flabel.addEventListener('click', function(e) {
+        e.stopPropagation();
+        document.querySelectorAll('.tree-label.selected').forEach(function(el) { el.classList.remove('selected'); });
+        flabel.classList.add('selected');
+        openFilePanel(fid);
+      });
+      fli.appendChild(flabel);
+      ul.appendChild(fli);
+    });
+
     elFolderContainer.innerHTML = '';
     elFolderContainer.appendChild(ul);
   }
@@ -1018,6 +1085,23 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
     });
     highlightNodes.add(nodeId);
     refreshColors();
+
+    // Zoom camera to this node in the 3D graph
+    if (graph) {
+      var gNodes = graph.graphData().nodes;
+      var targetNode = null;
+      for (var zi = 0; zi < gNodes.length; zi++) {
+        if (gNodes[zi].id === nodeId) { targetNode = gNodes[zi]; break; }
+      }
+      if (targetNode && typeof targetNode.x === 'number') {
+        var dist = 80;
+        graph.cameraPosition(
+          { x: targetNode.x + dist, y: targetNode.y + dist * 0.5, z: targetNode.z + dist },
+          { x: targetNode.x, y: targetNode.y, z: targetNode.z },
+          800
+        );
+      }
+    }
   }
 
   function initGraph(apiBase) {
@@ -1064,12 +1148,18 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
         pill.style.color = '#fff';
         pill.style.opacity = '1';
         pill.addEventListener('click', function() {
+          var color = langColor(ext);
           if (activeExts.has(ext)) {
             activeExts.delete(ext);
             pill.classList.add('off');
+            pill.style.borderColor = color;
+            pill.style.color = color;
           } else {
             activeExts.add(ext);
             pill.classList.remove('off');
+            pill.style.background = color;
+            pill.style.borderColor = 'transparent';
+            pill.style.color = '#fff';
           }
           renderGraph();
         });
@@ -1111,7 +1201,45 @@ function getScriptJs(apiBase: string, langColorsJson: string): string {
         })
         .onNodeClick(function(n) { selectedNode = n.id; refreshColors(); openFilePanel(n.id); });
 
+      // Slower decay for better clustering convergence
+      graph.d3AlphaDecay(0.02);
+
+      // Cluster force: nodes from same directory attract toward shared center
+      var clusterCenters = {};
+      (function() {
+        var dirSet = {};
+        allNodes.forEach(function(n) { dirSet[n.directory || ''] = true; });
+        var dirs = Object.keys(dirSet);
+        var goldenAngle = Math.PI * (3 - Math.sqrt(5));
+        var spread = Math.pow(dirs.length, 0.45) * 60;
+        dirs.forEach(function(dir, i) {
+          var y = 1 - (i / Math.max(dirs.length - 1, 1)) * 2;
+          var radius = Math.sqrt(1 - y * y);
+          var theta = goldenAngle * i;
+          clusterCenters[dir] = {
+            x: Math.cos(theta) * radius * spread,
+            y: y * spread,
+            z: Math.sin(theta) * radius * spread
+          };
+        });
+      })();
+
+      graph.d3Force('cluster', function(alpha) {
+        var strength = 0.25 * alpha;
+        var ns = graph.graphData().nodes;
+        ns.forEach(function(n) {
+          var center = clusterCenters[n.directory || ''];
+          if (!center) return;
+          n.vx = (n.vx || 0) + (center.x - (n.x || 0)) * strength;
+          n.vy = (n.vy || 0) + (center.y - (n.y || 0)) * strength;
+          n.vz = (n.vz || 0) + (center.z - (n.z || 0)) * strength;
+        });
+      });
+
       renderGraph();
+
+      // Auto zoom-to-fit after simulation settles
+      setTimeout(function() { if (graph) graph.zoomToFit(800, 50); }, 3500);
     };
     xhr.send();
   }
