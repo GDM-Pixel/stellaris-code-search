@@ -26,48 +26,66 @@ export function detectCycles(edges: DependencyEdge[]): CycleGroup[] {
     adj.get(e.source_file)!.push(e.target_file);
   }
 
-  // Tarjan's algorithm
+  // Tarjan's SCC — iterative (no recursion, safe on large graphs).
+  // Each work-stack frame: [node, neighborIndex] where neighborIndex tracks
+  // how far through the neighbor list we've processed (resumes after tree edges).
   const nodes = Array.from(nodeSet);
-  const index = new Map<string, number>();
+  const index   = new Map<string, number>();
   const lowlink = new Map<string, number>();
   const onStack = new Map<string, boolean>();
-  const stack: string[] = [];
+  const sccStack: string[] = [];
   const sccs: string[][] = [];
   let counter = 0;
 
-  function strongConnect(v: string): void {
-    index.set(v, counter);
-    lowlink.set(v, counter);
+  for (const root of nodes) {
+    if (index.has(root)) continue;
+
+    const work: Array<[string, number]> = [[root, 0]];
+    index.set(root, counter);
+    lowlink.set(root, counter);
     counter++;
-    stack.push(v);
-    onStack.set(v, true);
+    sccStack.push(root);
+    onStack.set(root, true);
 
-    const neighbors = adj.get(v) ?? [];
-    for (const w of neighbors) {
-      if (!index.has(w)) {
-        strongConnect(w);
-        lowlink.set(v, Math.min(lowlink.get(v)!, lowlink.get(w)!));
-      } else if (onStack.get(w)) {
-        lowlink.set(v, Math.min(lowlink.get(v)!, index.get(w)!));
+    while (work.length > 0) {
+      const frame = work[work.length - 1];
+      const v = frame[0];
+      const neighbors = adj.get(v) ?? [];
+
+      if (frame[1] < neighbors.length) {
+        const w = neighbors[frame[1]++];
+        if (!index.has(w)) {
+          // Tree edge — visit w (pre-order)
+          index.set(w, counter);
+          lowlink.set(w, counter);
+          counter++;
+          sccStack.push(w);
+          onStack.set(w, true);
+          work.push([w, 0]);
+        } else if (onStack.get(w)) {
+          // Back edge — update lowlink immediately
+          lowlink.set(v, Math.min(lowlink.get(v)!, index.get(w)!));
+        }
+      } else {
+        // Post-order: all neighbors of v processed
+        work.pop();
+        if (work.length > 0) {
+          // Propagate lowlink to parent (mirrors the post-recursive update)
+          const parent = work[work.length - 1][0];
+          lowlink.set(parent, Math.min(lowlink.get(parent)!, lowlink.get(v)!));
+        }
+        // Root of an SCC?
+        if (lowlink.get(v) === index.get(v)) {
+          const scc: string[] = [];
+          let w: string;
+          do {
+            w = sccStack.pop()!;
+            onStack.set(w, false);
+            scc.push(w);
+          } while (w !== v);
+          sccs.push(scc);
+        }
       }
-    }
-
-    // If v is a root node, pop the SCC
-    if (lowlink.get(v) === index.get(v)) {
-      const scc: string[] = [];
-      let w: string;
-      do {
-        w = stack.pop()!;
-        onStack.set(w, false);
-        scc.push(w);
-      } while (w !== v);
-      sccs.push(scc);
-    }
-  }
-
-  for (const node of nodes) {
-    if (!index.has(node)) {
-      strongConnect(node);
     }
   }
 
