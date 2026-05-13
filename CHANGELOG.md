@@ -1,5 +1,40 @@
 # Changelog
 
+## [4.4.0] - 2026-05-13
+
+### Added — Context overflow protection (inspiré de codegraph-rust)
+
+- **`src/utils/responseTier.ts`** — nouveau module de tier-aware response sizing :
+  - 4 paliers basés sur `STELLARIS_CONTEXT_WINDOW` (défaut 128K) : `small` (<50K), `medium` (50–150K), `large` (150–500K), `massive` (>500K)
+  - Chaque tier impose : `defaultLimit`, `maxLimit`, `maxResultBytes`, `maxGraphDepth`
+  - `truncateIfOversized(result, arrayFields)` — tronque les tableaux à la fin et injecte `_truncated: { truncated_items, original_count, fields, tier, max_bytes, hint }` pour signaler explicitement au LLM appelant qu'il a reçu des données partielles
+  - `clampLimit(userLimit)` — clamp un `limit` utilisateur au `maxLimit` du tier courant
+- **Branché dans 7 outils à risque d'overflow** : `search_code`, `get_blast_radius`, `get_dependencies`, `get_dependents`, `get_dead_code`, `get_circular_deps`, `get_most_coupled`
+- **Pourquoi** : sans garde, `get_blast_radius` sur un hub très importé pouvait silencieusement renvoyer plusieurs centaines de KB de JSON et faire déborder le contexte du LLM appelant. Désormais le tier `medium` (défaut) coupe à 80 KB et le LLM voit `_truncated.hint` pour réduire son `limit`.
+
+### Added — Architecture boundaries enforcement
+
+- **`stellaris.boundaries.json`** au root du projet — règles de couches imposées à l'indexation :
+  ```json
+  { "deny": [{ "from": "src/ui/**", "to": "src/db/**", "reason": "UI must not touch DB" }] }
+  ```
+  Patterns glob-style (`**`, `*`, `?`). Aucun runtime cost : la détection se fait pendant l'indexation, les violations sont stockées dans `graph.db`.
+- **Nouveau tool** : `get_boundary_violations` — groupe les violations par règle, top 5 exemples par règle, plein détail dans `violations[]`.
+- **Tables ajoutées** dans `graph.db` : `boundary_violations` (source, target, rule_name, from_pattern, to_pattern, reason).
+- **Cohérence sur edit incrémental** : `reindex_file` re-check les boundaries du fichier modifié; `deleteBoundaryViolations` purge les violations à la suppression.
+
+### Added — Doc/spec linking
+
+- **`src/graph/docLinker.ts`** — extrait les identifiants entre backticks (\`UserService\`, \`handleAuth\`) dans les fichiers markdown et les relie au fichier de définition du symbole correspondant (via l'index des chunks FTS).
+- **Nouveau tool** : `find_doc_references` — répond à "quels markdown référencent ce symbole / ce fichier ?". Utile avant de renommer ou supprimer un symbole documenté.
+- **Heuristiques anti-bruit** : skip des fenced code blocks, filtre stopwords (true/false/the/…), exigence d'une majuscule/underscore/point sauf si le mot fait ≥4 caractères.
+- **Table ajoutée** : `doc_links` (doc_file, symbol, target_file, line_number).
+
+### Notes d'implémentation
+
+- Inspiré de [codegraph-rust](https://github.com/Jakedismo/codegraph-rust) — adapté pour TypeScript/SQLite. Volontairement **pas** porté : agents internes Rig/LATS/Reflexion (le LLM est côté client MCP), SurrealDB (over-engineering pour notre échelle), reranking ML par-défaut, dataflow edges Rust-only.
+- 2 nouveaux outils, 4 nouvelles tables/colonnes, 0 breaking change. Les `meta.json` et indexes existants restent compatibles.
+
 ## [4.3.0] - 2026-04-25
 
 ### Added — Embedding providers pluggables (P0)

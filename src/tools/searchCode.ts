@@ -2,10 +2,11 @@ import { findProjectRoot } from '../indexer/scanner.js';
 import { hasIndex } from '../store/lancedb.js';
 import { hasFTSIndex } from '../store/fts.js';
 import { hybridSearch } from '../search/hybrid.js';
+import { clampLimit, truncateIfOversized } from '../utils/responseTier.js';
 
 export async function handleSearchCode(args: Record<string, unknown>) {
   const query = args.query as string;
-  const limit = (args.limit as number) ?? 10;
+  const limit = clampLimit(args.limit as number | undefined, { defaultLimit: 10 });
   const extensions = args.extensions as string[] | undefined;
 
   if (!query || typeof query !== 'string') {
@@ -66,15 +67,17 @@ export async function handleSearchCode(args: Record<string, unknown>) {
     ? `\n\n💡 Next steps:\n${topFiles.map(f => `  • get_file_outline("${f}") — see all symbols in this file`).join('\n')}\n  • get_symbol(file, name) — read a specific function with context`
     : '';
 
+  const payload = truncateIfOversized({
+    query,
+    results_count: formatted.length,
+    search_mode: (hasVector && hasFTS) ? 'hybrid' : hasVector ? 'vector' : 'fts',
+    results: formatted,
+  }, ['results']);
+
   return {
     content: [{
       type: 'text' as const,
-      text: JSON.stringify({
-        query,
-        results_count: formatted.length,
-        search_mode: (hasVector && hasFTS) ? 'hybrid' : hasVector ? 'vector' : 'fts',
-        results: formatted,
-      }, null, 2) + nextSteps,
+      text: JSON.stringify(payload, null, 2) + nextSteps,
     }],
   };
 }

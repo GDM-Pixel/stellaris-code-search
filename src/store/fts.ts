@@ -207,6 +207,21 @@ export async function getIndexedFilePaths(projectRoot: string): Promise<Set<stri
 }
 
 /**
+ * Return every indexed chunk's (name, file_path). Used to build a symbol → file
+ * index for doc linking. Filters out empty / whole-file chunks.
+ */
+export async function getAllChunkNames(projectRoot: string): Promise<{ name: string; file_path: string }[]> {
+  try {
+    const conn = await connectFTS(projectRoot);
+    return conn.prepare(
+      "SELECT name, file_path FROM chunks WHERE name IS NOT NULL AND name != '' AND chunk_type != 'whole_file' AND chunk_type != 'doc_section'"
+    ).all() as { name: string; file_path: string }[];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Check if FTS index exists and has data.
  */
 export async function hasFTSIndex(projectRoot: string): Promise<boolean> {

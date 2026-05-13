@@ -6,8 +6,10 @@ import { embedChunks, getEmbeddingConfig } from '../indexer/embedder.js';
 import { addChunks, deleteChunksByFile } from '../store/lancedb.js';
 import { addFTSChunks, deleteFTSChunksByFile } from '../store/fts.js';
 import { loadStellarisRc, saveStellarisRc } from '../config/stellarisrc.js';
-import { setFileEdges, deleteFileEdges } from '../graph/store.js';
+import { setFileEdges, deleteFileEdges, setBoundaryViolations, deleteBoundaryViolations, setDocLinks, deleteDocLinks } from '../graph/store.js';
 import { resolveImports, resetResolverCache } from '../graph/resolver.js';
+import { loadBoundaries, resetBoundariesCache, checkEdge } from '../graph/boundaries.js';
+import { extractDocLinks } from '../graph/docLinker.js';
 import { readFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { relative, resolve, extname, join } from 'node:path';
@@ -123,7 +125,10 @@ export async function runReindex(projectRoot: string, force = false): Promise<{
 
   // Build dependency graph for processed files
   resetResolverCache();
+  resetBoundariesCache();
+  const boundaryRules = await loadBoundaries(projectRoot);
   let graphEdges = 0;
+  let totalViolations = 0;
   for (const file of filesToProcess) {
     if (file.category !== 'code') continue;
     try {
@@ -137,6 +142,24 @@ export async function runReindex(projectRoot: string, force = false): Promise<{
         await setFileEdges(projectRoot, file.relativePath, targets);
         graphEdges += targets.length;
       }
+      // Boundary check
+      if (boundaryRules.length > 0) {
+        const violations: { target_file: string; rule_name: string; from_pattern: string; to_pattern: string; reason: string }[] = [];
+        for (const t of targets) {
+          const matched = checkEdge(file.relativePath, t.targetFile, boundaryRules);
+          for (const r of matched) {
+            violations.push({
+              target_file: t.targetFile,
+              rule_name: r.name,
+              from_pattern: r.fromPattern,
+              to_pattern: r.toPattern,
+              reason: r.reason,
+            });
+          }
+        }
+        await setBoundaryViolations(projectRoot, file.relativePath, violations);
+        totalViolations += violations.length;
+      }
     } catch {
       // Skip graph build errors for individual files
     }
@@ -144,12 +167,58 @@ export async function runReindex(projectRoot: string, force = false): Promise<{
   if (graphEdges > 0) {
     console.error(`[Stellaris] Built dependency graph: ${graphEdges} edges from ${filesToProcess.length} files`);
   }
+  if (boundaryRules.length > 0) {
+    console.error(`[Stellaris] Boundary check: ${totalViolations} violation(s) across ${boundaryRules.length} rule(s)`);
+  }
+
+  // Build doc → symbol links from processed markdown/spec files
+  let totalDocLinks = 0;
+  const docFiles = filesToProcess.filter(f => f.category === 'docs');
+  if (docFiles.length > 0) {
+    const symbolIndex = await buildSymbolIndex(projectRoot);
+    for (const docFile of docFiles) {
+      try {
+        const content = readFileSync(docFile.absolutePath, 'utf-8');
+        const links = extractDocLinks(content, symbolIndex);
+        if (links.length > 0) {
+          await setDocLinks(projectRoot, docFile.relativePath, links);
+          totalDocLinks += links.length;
+        }
+      } catch {
+        // Skip per-file errors
+      }
+    }
+    if (totalDocLinks > 0) {
+      console.error(`[Stellaris] Linked ${totalDocLinks} doc references to code symbols`);
+    }
+  }
 
   return {
     files_processed: filesToProcess.length,
     chunks_created: allChunks.length,
     files_deleted: changed.deleted.length,
   };
+}
+
+/**
+ * Build a symbol → file index from LanceDB chunks.
+ * Used for doc-linking: find which file defines a symbol referenced in markdown.
+ */
+async function buildSymbolIndex(projectRoot: string): Promise<Map<string, string>> {
+  const { getAllChunkNames } = await import('../store/fts.js');
+  const index = new Map<string, string>();
+  try {
+    const rows = await getAllChunkNames(projectRoot);
+    for (const row of rows) {
+      // Prefer the first occurrence (typically the definition file)
+      if (row.name && !index.has(row.name)) {
+        index.set(row.name, row.file_path);
+      }
+    }
+  } catch (err: any) {
+    console.error(`[Stellaris] Warning: doc-link symbol index unavailable: ${err.message}`);
+  }
+  return index;
 }
 
 /**
@@ -175,6 +244,8 @@ export async function handleReindexFile(args: Record<string, unknown>) {
     await deleteChunksByFile(projectRoot, relativePath);
     await deleteFTSChunksByFile(projectRoot, relativePath);
     await deleteFileEdges(projectRoot, relativePath);
+    await deleteBoundaryViolations(projectRoot, relativePath);
+    await deleteDocLinks(projectRoot, relativePath);
     const meta = await loadMetaIndex(projectRoot);
     delete meta[relativePath];
     await saveMetaIndex(projectRoot, meta);
@@ -194,6 +265,8 @@ export async function handleReindexFile(args: Record<string, unknown>) {
   await deleteChunksByFile(projectRoot, relativePath);
   await deleteFTSChunksByFile(projectRoot, relativePath);
   await deleteFileEdges(projectRoot, relativePath);
+  await deleteBoundaryViolations(projectRoot, relativePath);
+  await deleteDocLinks(projectRoot, relativePath);
   const meta = await loadMetaIndex(projectRoot);
   delete meta[relativePath];
 
@@ -247,8 +320,36 @@ export async function handleReindexFile(args: Record<string, unknown>) {
       if (targets.length > 0) {
         await setFileEdges(projectRoot, relativePath, targets);
       }
+      // Boundary check
+      const boundaryRules = await loadBoundaries(projectRoot);
+      if (boundaryRules.length > 0) {
+        const violations: { target_file: string; rule_name: string; from_pattern: string; to_pattern: string; reason: string }[] = [];
+        for (const t of targets) {
+          const matched = checkEdge(relativePath, t.targetFile, boundaryRules);
+          for (const r of matched) {
+            violations.push({
+              target_file: t.targetFile, rule_name: r.name,
+              from_pattern: r.fromPattern, to_pattern: r.toPattern, reason: r.reason,
+            });
+          }
+        }
+        await setBoundaryViolations(projectRoot, relativePath, violations);
+      }
     } catch {
       // Skip graph errors
+    }
+  } else if (category === 'docs') {
+    // Update doc → symbol links for this file
+    try {
+      const content = readFileSync(absolutePath, 'utf-8');
+      const symbolIndex = await buildSymbolIndex(projectRoot);
+      const links = extractDocLinks(content, symbolIndex);
+      await deleteDocLinks(projectRoot, relativePath);
+      if (links.length > 0) {
+        await setDocLinks(projectRoot, relativePath, links);
+      }
+    } catch {
+      // Skip per-file errors
     }
   }
 

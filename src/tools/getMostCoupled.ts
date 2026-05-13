@@ -6,6 +6,7 @@
 
 import { findProjectRoot } from '../indexer/scanner.js';
 import { getAllEdges, hasGraph } from '../graph/store.js';
+import { truncateIfOversized } from '../utils/responseTier.js';
 
 export async function handleGetMostCoupled(args: Record<string, unknown>) {
   const top = typeof args.top === 'number' ? Math.max(1, Math.min(args.top, 100)) : 10;
@@ -51,14 +52,16 @@ export async function handleGetMostCoupled(args: Record<string, unknown>) {
     .sort((a, b) => b.total - a.total)
     .slice(0, top);
 
+  const payload = truncateIfOversized({
+    summary: `Top ${ranked.length} most coupled file(s) by total dependencies (in + out).`,
+    files: ranked,
+    note: 'High in-degree = many files depend on this. High out-degree = this file depends on many others. Both signal coupling risk.',
+  }, ['files']);
+
   return {
     content: [{
       type: 'text' as const,
-      text: JSON.stringify({
-        summary: `Top ${ranked.length} most coupled file(s) by total dependencies (in + out).`,
-        files: ranked,
-        note: 'High in-degree = many files depend on this. High out-degree = this file depends on many others. Both signal coupling risk.',
-      }, null, 2),
+      text: JSON.stringify(payload, null, 2),
     }],
   };
 }

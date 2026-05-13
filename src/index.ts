@@ -38,6 +38,8 @@ import { handleSessionBriefing } from './tools/sessionBriefing.js';
 import { handleDetectSignificantChanges } from './tools/detectSignificantChanges.js';
 import { handleGraphExport } from './tools/graphExport.js';
 import { handleUsageBreakdown } from './tools/usageBreakdown.js';
+import { handleGetBoundaryViolations } from './tools/getBoundaryViolations.js';
+import { handleFindDocReferences } from './tools/findDocReferences.js';
 import { autoIndex, autoScanUsage, autoDbSnapshot } from './startup.js';
 import { PROMPTS, getPromptMessages } from './prompts.js';
 import { closeGraphStore } from './graph/store.js';
@@ -52,7 +54,7 @@ if (!process.env.OPENAI_API_KEY) {
 const server = new Server(
   {
     name: 'stellaris-mcp',
-    version: '4.3.0',
+    version: '4.4.0',
   },
   {
     capabilities: {
@@ -546,6 +548,31 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'get_boundary_violations',
+    description: 'Returns architecture boundary violations detected at index time. Rules are loaded from `stellaris.boundaries.json` at project root (format: `{ "deny": [{ "from": "src/ui/**", "to": "src/db/**", "reason": "..." }] }`). Patterns are glob-style. Use this to enforce layering rules without runtime overhead. Requires a prior reindex.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {},
+    },
+  },
+  {
+    name: 'find_doc_references',
+    description: 'Find documentation/markdown files that reference a code symbol or file (via `backtick-quoted` identifiers). Use this to discover where a symbol is documented, or to check if a file you are about to delete is mentioned in the docs. Requires a prior reindex.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        symbol: {
+          type: 'string',
+          description: 'Symbol name to find references for (e.g., "UserService", "handleAuth")',
+        },
+        file: {
+          type: 'string',
+          description: 'File path to find doc references for (relative from project root). Alternative to `symbol`.',
+        },
+      },
+    },
+  },
 ];
 
 // List tools handler
@@ -630,6 +657,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleUsageBreakdown(args ?? {});
       case 'graph_export':
         return await handleGraphExport(args ?? {});
+      case 'get_boundary_violations':
+        return await handleGetBoundaryViolations(args ?? {});
+      case 'find_doc_references':
+        return await handleFindDocReferences(args ?? {});
       default:
         throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
     }

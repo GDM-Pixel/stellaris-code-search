@@ -7,6 +7,7 @@
 import { findProjectRoot } from '../indexer/scanner.js';
 import { getAllEdges, hasGraph } from '../graph/store.js';
 import { loadMetaIndex } from '../indexer/hasher.js';
+import { truncateIfOversized } from '../utils/responseTier.js';
 
 /** Extensions that are never imported via JS/TS import statements — always in_degree 0, not dead code */
 export const NON_IMPORTABLE_EXTENSIONS = new Set([
@@ -90,17 +91,19 @@ export async function handleGetDeadCode(args: Record<string, unknown>) {
 
   deadFiles.sort();
 
+  const payload = truncateIfOversized({
+    summary: deadFiles.length === 0
+      ? 'No dead code detected (all files are imported by at least one other file).'
+      : `Found ${deadFiles.length} unreferenced file(s).`,
+    total: deadFiles.length,
+    dead_files: deadFiles,
+    note: 'Entry points (index, main, config, test, spec files) are excluded. Use exclude_patterns to add custom exclusions.',
+  }, ['dead_files']);
+
   return {
     content: [{
       type: 'text' as const,
-      text: JSON.stringify({
-        summary: deadFiles.length === 0
-          ? 'No dead code detected (all files are imported by at least one other file).'
-          : `Found ${deadFiles.length} unreferenced file(s).`,
-        total: deadFiles.length,
-        dead_files: deadFiles,
-        note: 'Entry points (index, main, config, test, spec files) are excluded. Use exclude_patterns to add custom exclusions.',
-      }, null, 2),
+      text: JSON.stringify(payload, null, 2),
     }],
   };
 }

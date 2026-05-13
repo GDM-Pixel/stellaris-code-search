@@ -17,6 +17,9 @@ Search your codebase with natural language, browse file structures, inspect symb
 - **Optional re-ranking** — Voyage `rerank-2` or Cohere `rerank-v3.5` post-RRF pass for +15-30% top-5 precision
 - **Dependency graph** — resolves imports to real file paths, tracks file→file dependencies
 - **Blast radius analysis** — BFS traversal to find what would break if you change a file
+- **Architecture boundaries** *(v4.4)* — enforce layer rules (`stellaris.boundaries.json`) at index time; violations surfaced via `get_boundary_violations` with zero runtime cost
+- **Doc/spec linking** *(v4.4)* — markdown `` `backtick-quoted` `` symbol references are linked to their definitions, queryable via `find_doc_references`
+- **Context-overflow protection** *(v4.4)* — tier-aware result limits + automatic truncation with `_truncated` metadata, configured by `STELLARIS_CONTEXT_WINDOW` (small/medium/large/massive tiers)
 - **MCP Prompts** — 5 guided workflows (`/nova_explore`, `/nova_find`, `/nova_file`, `/nova_review`, `/nova_usage`)
 - **Usage dashboard** — tracks Claude Code token consumption and estimated API cost in real time, with cache analytics and task category breakdown
 - **Token breakdown** — see where tokens go: by task category (coding, debugging, feature…), MCP server, and core tool — inspired by [codeburn](https://github.com/AgentSeal/codeburn)
@@ -43,7 +46,7 @@ Tested on a real-world Astro project (341 files, 430 chunks indexed):
 
 Stellaris excels at complex multi-file questions (auth flows, payment logic, i18n systems). Grep/Glob remain better for exhaustive file listings. Best strategy: **Stellaris first, Grep/Glob as complement**.
 
-## Tools (14)
+## Tools (16)
 
 ### Semantic search (requires an embedding API key, or Ollama locally)
 
@@ -69,6 +72,13 @@ Stellaris excels at complex multi-file questions (auth flows, payment logic, i18
 | `get_dependencies` | Files that a given file imports. Supports `depth` parameter for transitive traversal. |
 | `get_dependents` | Files that import a given file (reverse dependencies). |
 | `get_blast_radius` | BFS impact analysis: finds all files transitively affected by changes to a file. Returns severity (LOW/MEDIUM/HIGH) and files grouped by depth. |
+
+### Architecture & documentation (no API calls, v4.4)
+
+| Tool | Description |
+|------|-------------|
+| `get_boundary_violations` | Returns architecture layer violations detected at index time. Rules are loaded from `stellaris.boundaries.json` at project root (`{ "deny": [{ "from": "src/ui/**", "to": "src/db/**", "reason": "..." }] }`). Glob-style patterns. Zero runtime overhead — detection happens during indexing. |
+| `find_doc_references` | Find markdown/spec files that reference a code symbol or file (via `` `backtick` `` identifiers). Useful before renaming or deleting documented code. |
 
 ### Usage tracking (no API calls)
 
@@ -192,6 +202,7 @@ npm run build
 | `RERANK_PROVIDER` | No (default: `off`) | `off` \| `voyage` \| `cohere` — enables re-ranking |
 | `VOYAGE_RERANK_MODEL` | No (default: `rerank-2`) | Voyage re-rank model |
 | `COHERE_API_KEY` | For Cohere re-ranker | API key for `rerank-v3.5` |
+| `STELLARIS_CONTEXT_WINDOW` | No (default: `128000`) | Calling LLM's context window in tokens. Drives tier-based result limits and truncation thresholds: small (<50K), medium (50–150K), large (150–500K), massive (>500K). |
 
 Without any embedding API key (and no Ollama), the server starts normally — `get_file_tree`, `get_file_outline`, and `get_symbol` work without it.
 
@@ -217,6 +228,30 @@ Place at the root of the project to index:
   "chunkStrategy": "ast"
 }
 ```
+
+### `stellaris.boundaries.json` (optional, v4.4)
+
+Place at the project root to enforce architecture layer rules at index time. Any `depends_on` edge that matches a `deny` rule is flagged as a boundary violation and surfaced through `get_boundary_violations`. Detection happens during `reindex` — there is no runtime cost.
+
+```json
+{
+  "deny": [
+    {
+      "name": "ui-never-imports-db",
+      "from": "src/ui/**",
+      "to": "src/db/**",
+      "reason": "UI layer must go through services, not DB directly"
+    },
+    {
+      "from": "src/domain/**",
+      "to": "src/infrastructure/**",
+      "reason": "Hexagonal architecture: domain must stay infrastructure-agnostic"
+    }
+  ]
+}
+```
+
+Glob syntax: `**` matches any depth, `*` matches one path segment, `?` matches one character. Paths are relative to project root, forward slashes.
 
 ### `.stellarisrc` (auto-generated)
 

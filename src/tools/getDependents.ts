@@ -1,5 +1,6 @@
 import { findProjectRoot } from '../indexer/scanner.js';
 import { getDependents, hasGraph } from '../graph/store.js';
+import { truncateIfOversized } from '../utils/responseTier.js';
 
 export async function handleGetDependents(args: Record<string, unknown>) {
   const filePath = args.file as string;
@@ -31,17 +32,19 @@ export async function handleGetDependents(args: Record<string, unknown>) {
     ? `\n\n💡 Next steps:\n  • get_blast_radius("${filePath}") — full impact analysis with depth\n  • get_dependencies("${filePath}") — see what this file imports\n${deps.slice(0, 2).map(d => `  • get_file_outline("${d.source_file}") — explore dependent`).join('\n')}`
     : `\n\n💡 Next steps:\n  • get_dependencies("${filePath}") — see what this file imports`;
 
+  const payload = truncateIfOversized({
+    file: filePath,
+    dependent_count: deps.length,
+    dependents: deps.map(d => ({
+      file: d.source_file,
+      imports: d.import_names,
+    })),
+  }, ['dependents']);
+
   return {
     content: [{
       type: 'text' as const,
-      text: JSON.stringify({
-        file: filePath,
-        dependent_count: deps.length,
-        dependents: deps.map(d => ({
-          file: d.source_file,
-          imports: d.import_names,
-        })),
-      }, null, 2) + nextSteps,
+      text: JSON.stringify(payload, null, 2) + nextSteps,
     }],
   };
 }
