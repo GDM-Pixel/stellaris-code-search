@@ -10,3 +10,5 @@ dist/
 .claude/
 # Internal audit file — not for public repo
 AUDIT.md
+# Internal dev instructions — exposes architecture details, not for public repo
+CLAUDE.md
