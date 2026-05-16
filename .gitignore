@@ -7,6 +7,8 @@ dist/
 *.tsbuildinfo
 # Local config — environment-specific, not for sharing
 .stellarisrc
+# ...but keep test fixture rc files (needed by the resolver test suite)
+!test/fixtures/**/.stellarisrc
 .claude/
 # Internal audit file — not for public repo
 AUDIT.md

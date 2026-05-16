@@ -19,6 +19,10 @@ export interface StellarisRc {
   db_auto_snapshot?: boolean;
   /** Comma-separated DB schemas to introspect (default: public) */
   db_schemas?: string[];
+  // Import-alias overrides use `alias.<name>=<path>` lines (e.g. `alias.@=src`).
+  // They are read directly by src/graph/resolver.ts (highest-priority alias
+  // source) and intentionally not parsed here — this struct is for runtime
+  // config, alias keys are variadic and resolver-specific.
 }
 
 const DEFAULTS: StellarisRc = {
