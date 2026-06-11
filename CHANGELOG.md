@@ -1,5 +1,32 @@
 # Changelog
 
+## [4.5.0] - 2026-05-16
+
+### Fixed — Résolution des alias d'import (graphe de dépendances)
+
+Bug critique : sur tout projet utilisant des alias de chemins (`@/*`, `~lib`, …), le graphe de dépendances était massivement incomplet. Symptômes observés sur un projet React/TS de 311 fichiers : ~154 edges seulement, 55,8 % de dead code rapporté à tort, `get_dependents` renvoyant `0` sur des fichiers à 10+ importeurs réels, `get_blast_radius` sous-estimé.
+
+Quatre causes racines corrigées dans **`src/graph/resolver.ts`** :
+
+1. **tsconfig le plus proche de la source, pas seulement à la racine projet** — `loadTSPaths` ne lisait que `<projectRoot>/tsconfig.json`. Sur un monorepo où l'app vit dans un sous-dossier (`<repo>/nova-chat/` avec son propre tsconfig), aucun alias n'était chargé. Le résolveur remonte désormais depuis le dossier du fichier source jusqu'au tsconfig/jsconfig le plus proche (borné à `projectRoot`).
+2. **Chaîne `extends`** — `compilerOptions.paths`/`baseUrl` sont maintenant fusionnés le long de la chaîne `extends` (y compris `tsconfig.base.json`, extends package-style). Sémantique TS respectée : les `paths` enfant écrasent, `baseUrl` suit le tsconfig qui le déclare.
+3. **`baseUrl`/`paths` relatifs au dossier du tsconfig**, plus à `projectRoot` — corrige la résolution dans les apps imbriquées.
+4. **Re-exports / barrel files** — `export { X } from './X'` et `export * from './X'` ne créaient aucune edge (seuls les `import` étaient parsés). Ajouté dans **`src/indexer/chunker.ts`** (AST `export_statement` + fallback regex). Les barrels ont désormais leurs edges sortantes — un fichier ré-exporté n'est plus vu comme dead code.
+
+### Added
+
+- **Fallback Vite `resolve.alias`** — quand aucun `paths` tsconfig n'est trouvé, parsing best-effort statique de `vite.config.{ts,js,mts,cts}` (formes objet et tableau `[{ find, replacement }]`, `path.resolve(__dirname, …)` et `fileURLToPath(new URL(…))`).
+- **Override manuel `.stellarisrc`** — lignes `alias.<nom>=<chemin>` (ex. `alias.@=src`), priorité la plus haute, filet de sécurité si l'auto-détection échoue. Cible résolue relativement à la racine projet.
+- **Fallback de convention** `@/` et `~/` → `<src le plus proche>/` conservé en dernier recours (ne résout que si le fichier existe réellement — jamais d'edge fabriquée).
+- **Suite de tests** (`test/`, `npm test`) : `test/resolver.test.ts` (12 cas dont régression) + `test/graph-integration.test.ts` (boucle de build de graphe end-to-end sur fixture monorepo). Aucun framework — exécuté via `tsx` + `node:assert`.
+
+### Notes d'implémentation
+
+- API publique inchangée (`resolveImports`, `resetResolverCache`) — les 2 appelants dans `src/tools/reindex.ts` ne changent pas. 0 breaking change.
+- L'ancien hardcode `@/`→`<projectRoot>/src/` (cause racine #2 d'origine) est remplacé par de la détection de config réelle ; conservé uniquement en fallback de dernier recours.
+- **Après mise à jour** : relancer un reindex avec `force=true` pour reconstruire le graphe, puis re-vérifier `project_health` (le % de dead code doit chuter) et `get_dependents`.
+- État résolveur caché par racine projet (`projectStates`) + cache d'alias par dossier source ; purgé par `resetResolverCache()` au début de chaque reindex.
+
 ## [4.4.0] - 2026-05-13
 
 ### Added — Context overflow protection (inspiré de codegraph-rust)

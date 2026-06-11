@@ -316,6 +316,12 @@ export function extractImports(rootNode: Parser.SyntaxNode, extension: string): 
       // TS/JS/CSS
       const source = child.children.find((c) => c.type === 'string')?.text;
       if (source) imports.push(source.replace(/['"]/g, ''));
+    } else if (child.type === 'export_statement') {
+      // TS/JS re-exports / barrel files: export { X } from './X'; export * from './X'
+      // The `from` source is a `string` child — without this, barrel files have
+      // no outgoing edges and everything they re-export looks like dead code.
+      const source = child.children.find((c) => c.type === 'string')?.text;
+      if (source) imports.push(source.replace(/['"]/g, ''));
     } else if (child.type === 'import_from_statement' || child.type === 'import_statement') {
       // Python
       if (extension === '.py') {
@@ -367,6 +373,11 @@ function extractImportsRegex(content: string): string[] {
   // Dynamic imports: import('...')
   const dynRe = /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
   while ((m = dynRe.exec(scanContent)) !== null) {
+    results.push(m[1]);
+  }
+  // Re-exports / barrels: export { X } from '...'  /  export * from '...'
+  const reExportRe = /\bexport\s+(?:\*|\{[^}]*\}|\*\s+as\s+\w+)\s+from\s+['"]([^'"]+)['"]/g;
+  while ((m = reExportRe.exec(scanContent)) !== null) {
     results.push(m[1]);
   }
   return [...new Set(results)];

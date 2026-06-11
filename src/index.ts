@@ -54,7 +54,7 @@ if (!process.env.OPENAI_API_KEY) {
 const server = new Server(
   {
     name: 'stellaris-mcp',
-    version: '4.4.0',
+    version: '4.5.0',
   },
   {
     capabilities: {

@@ -267,9 +267,17 @@ auto_index=true
 
 # Re-ranking (off | voyage | cohere) — default: off
 # rerank_provider=voyage
+
+# Import-alias overrides (safety net if auto-detection from
+# tsconfig paths / vite resolve.alias fails). Path is relative
+# to the project root.
+# alias.@=src
+# alias.#utils=src/lib/utils
 ```
 
 You can toggle `auto_index` via the `reindex` tool (`enable_auto_index: false`) or edit the file manually.
+
+**Import alias resolution.** The dependency graph auto-detects path aliases from the `tsconfig.json`/`jsconfig.json` nearest each source file (following `extends`, including monorepo subdirectories), falling back to `vite.config.*` `resolve.alias`. The `@/` and `~/` conventions resolve to the nearest `src/` automatically. Use the `alias.<name>=<path>` lines above only as an override when auto-detection can't find your config.
 
 ### `.vectorignore` (optional)
 
