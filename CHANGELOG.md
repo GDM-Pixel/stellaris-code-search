@@ -1,6 +1,6 @@
 # Changelog
 
-## [4.6.1] - 2026-06-11
+## [4.6.1] - 2026-07-06
 
 ### Fixed — Projets sans dossier `src/` : 0 fichier de code indexé (PHP/WordPress notamment)
 
@@ -22,7 +22,7 @@ Validé : sur une fixture plugin PHP (`test/fixtures/php-plugin/`), avant = 1 fi
 
 Relancer un reindex (`reindex` avec `force=true` recommandé) sur les projets précédemment vides pour reconstruire l'index et le graphe. Pour exclure des dossiers spécifiques désormais scannés (ex. `test/fixtures/`), utiliser `.vectorignore` ou `.gitignore`.
 
-## [4.6.0] - 2026-06-11
+## [4.6.0] - 2026-07-06
 
 ### Added — Instrumentation d'usage des outils (préparation à l'optimisation tokens)
 
