@@ -1,5 +1,26 @@
 # Changelog
 
+## [4.7.0] - 2026-07-06
+
+### Added — Graphe de dépendances pour PHP (require/include)
+
+Le parsing AST du PHP existait déjà (symbols via `get_file_outline`/`get_symbol`), mais `extractImports` ne reconnaissait aucun mécanisme d'inclusion PHP → 0 arête → `get_dependencies`, `get_dependents`, `get_blast_radius`, `get_circular_deps`, `get_topological_order`, `simulate_move` et la partie graphe de `project_health` étaient inopérants sur tout projet PHP.
+
+Ajouté dans **`src/indexer/chunker.ts`** (`extractPHPRequire`) :
+
+- Reconnaissance des `require`, `require_once`, `include`, `include_once` (node types `*_expression`, enfants d'un `expression_statement`).
+- Trois formes de chemin couvrant l'essentiel des plugins WordPress :
+  - `require_once __DIR__ . '/includes/foo.php'` → `./includes/foo.php`
+  - `require_once dirname(__FILE__) . '/foo.php'` → `./foo.php`
+  - `include 'admin/settings.php'` → `./admin/settings.php`
+- Les chemins normalisés en relatifs (`./…`) réutilisent le résolveur existant (`resolveImports` → `tryResolveFile`), qui matche déjà les fichiers `.php` par chemin exact. Aucune modification du resolver nécessaire.
+
+**Limite volontaire :** les `require`/`include` construits sur des constantes non locales (`ABSPATH . 'wp-load.php'`, `WP_PLUGIN_DIR . '…'`) sont **ignorés** — ils ne pointent pas vers un fichier du projet et créeraient de fausses arêtes. Les `use Namespace\Class` (autoloading PSR-4) ne sont **pas** encore résolus : ça demande de parser le mapping PSR-4 de `composer.json`. À faire dans une version ultérieure si besoin.
+
+### Added
+
+- **`test/php-graph.test.ts`** + fixture `test/fixtures/php-graph/` : vérifie que les 3 formes de require produisent des arêtes, que `ABSPATH` est ignoré (pas de fausse arête), et que les chaînes de require imbriquées produisent les bons `dependents`. Ajouté à `npm test`.
+
 ## [4.6.1] - 2026-07-06
 
 ### Fixed — Projets sans dossier `src/` : 0 fichier de code indexé (PHP/WordPress notamment)

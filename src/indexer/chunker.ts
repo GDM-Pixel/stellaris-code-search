@@ -340,10 +340,74 @@ export function extractImports(rootNode: Parser.SyntaxNode, extension: string): 
       // Ruby: require 'foo' / require_relative 'bar'
       const arg = child.children.find((c) => c.type === 'string');
       if (arg) imports.push(arg.text.replace(/['"]/g, ''));
+    } else if (child.type === 'expression_statement' && extension === '.php') {
+      // PHP: require/include are children of an expression_statement.
+      const phpImport = extractPHPRequire(child);
+      if (phpImport) imports.push(phpImport);
     }
   }
 
   return imports;
+}
+
+/**
+ * Extract a file path from a PHP require/include statement.
+ *
+ * Handles the common WordPress/plugin patterns:
+ *   require_once __DIR__ . '/includes/foo.php'   → './includes/foo.php'
+ *   require_once dirname(__FILE__) . '/foo.php'  → './foo.php'
+ *   include 'admin/settings.php'                 → './admin/settings.php'
+ *
+ * Both `__DIR__` and a bare relative string resolve relative to the current
+ * file's directory, so we normalize everything to a leading './'. Paths built
+ * from other constants (ABSPATH, WP_PLUGIN_DIR, …) are not project-local and
+ * are skipped — we only emit a path when the string literal is the sole
+ * dynamic-looking segment beyond a __DIR__/dirname anchor.
+ */
+function extractPHPRequire(exprStatement: Parser.SyntaxNode): string | null {
+  const REQUIRE_TYPES = new Set([
+    'require_once_expression', 'require_expression',
+    'include_once_expression', 'include_expression',
+  ]);
+  const expr = exprStatement.children.find((c) => REQUIRE_TYPES.has(c.type));
+  if (!expr) return null;
+
+  // Case A: direct string literal — include 'admin/settings.php'
+  const directString = expr.children.find((c) => c.type === 'string');
+  if (directString) {
+    return normalizePHPPath(getStringContent(directString));
+  }
+
+  // Case B: binary expression — __DIR__ . '/foo.php' or dirname(__FILE__) . '/foo.php'
+  const binary = expr.children.find((c) => c.type === 'binary_expression');
+  if (binary) {
+    const anchor = binary.children.find(
+      (c) =>
+        (c.type === 'name' && (c.text === '__DIR__' || c.text === '__FILE__')) ||
+        (c.type === 'function_call_expression' && /dirname|__DIR__/.test(c.text)),
+    );
+    const str = binary.children.find((c) => c.type === 'string');
+    // Only resolve when anchored to the current dir; skip ABSPATH/other constants.
+    if (anchor && str) {
+      return normalizePHPPath(getStringContent(str));
+    }
+  }
+
+  return null;
+}
+
+function getStringContent(stringNode: Parser.SyntaxNode): string {
+  const content = stringNode.children.find((c) => c.type === 'string_content');
+  return (content?.text ?? stringNode.text).replace(/['"]/g, '');
+}
+
+/** Normalize a PHP require path to a relative import ('./x') the resolver understands. */
+function normalizePHPPath(path: string): string | null {
+  if (!path) return null;
+  let p = path.trim();
+  if (p.startsWith('.')) return p; // already relative
+  if (p.startsWith('/')) return '.' + p; // '/includes/foo.php' → './includes/foo.php'
+  return './' + p; // 'admin/settings.php' → './admin/settings.php'
 }
 
 /**
