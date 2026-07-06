@@ -40,6 +40,8 @@ import { handleGraphExport } from './tools/graphExport.js';
 import { handleUsageBreakdown } from './tools/usageBreakdown.js';
 import { handleGetBoundaryViolations } from './tools/getBoundaryViolations.js';
 import { handleFindDocReferences } from './tools/findDocReferences.js';
+import { instrumentToolCall } from './instrumentation/usageLogger.js';
+import { findProjectRoot } from './indexer/scanner.js';
 import { autoIndex, autoScanUsage, autoDbSnapshot } from './startup.js';
 import { PROMPTS, getPromptMessages } from './prompts.js';
 import { closeGraphStore } from './graph/store.js';
@@ -54,7 +56,7 @@ if (!process.env.OPENAI_API_KEY) {
 const server = new Server(
   {
     name: 'stellaris-mcp',
-    version: '4.5.0',
+    version: '4.6.1',
   },
   {
     capabilities: {
@@ -595,75 +597,51 @@ server.setRequestHandler(GetPromptRequestSchema, async (request) => {
   };
 });
 
-// Call tool handler
+async function dispatchTool(name: string, args: Record<string, unknown>) {
+  switch (name) {
+    case 'search_code': return await handleSearchCode(args);
+    case 'search_docs': return await handleSearchDocs(args);
+    case 'reindex': return await handleReindex(args);
+    case 'reindex_file': return await handleReindexFile(args);
+    case 'get_file_tree': return await handleGetFileTree(args);
+    case 'get_file_outline': return await handleGetFileOutline(args);
+    case 'get_file_folded': return await handleGetFileFolded(args);
+    case 'session_briefing': return await handleSessionBriefing(args);
+    case 'detect_significant_changes': return await handleDetectSignificantChanges(args);
+    case 'get_symbol': return await handleGetSymbol(args);
+    case 'get_dependencies': return await handleGetDependencies(args);
+    case 'get_dependents': return await handleGetDependents(args);
+    case 'get_blast_radius': return await handleGetBlastRadius(args);
+    case 'usage_stats': return await handleUsageStats(args);
+    case 'usage_dashboard': return await handleUsageDashboard(args);
+    case 'usage_anomalies': return await handleUsageAnomalies(args);
+    case 'db_snapshot': return await handleDbSnapshot(args);
+    case 'db_schema': return await handleDbSchema(args);
+    case 'db_search': return await handleDbSearch(args);
+    case 'graph_view': return await handleGraphView(args);
+    case 'get_circular_deps': return await handleGetCircularDeps(args);
+    case 'get_dead_code': return await handleGetDeadCode(args);
+    case 'get_topological_order': return await handleGetTopologicalOrder(args);
+    case 'simulate_move': return await handleSimulateMove(args);
+    case 'get_most_coupled': return await handleGetMostCoupled(args);
+    case 'project_health': return await handleProjectHealth(args);
+    case 'usage_breakdown': return await handleUsageBreakdown(args);
+    case 'graph_export': return await handleGraphExport(args);
+    case 'get_boundary_violations': return await handleGetBoundaryViolations(args);
+    case 'find_doc_references': return await handleFindDocReferences(args);
+    default:
+      throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
+  }
+}
+
+// Call tool handler — wrapped with usage instrumentation
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+  const safeArgs = (args ?? {}) as Record<string, unknown>;
+  const projectRoot = findProjectRoot(process.cwd());
 
   try {
-    switch (name) {
-      case 'search_code':
-        return await handleSearchCode(args ?? {});
-      case 'search_docs':
-        return await handleSearchDocs(args ?? {});
-      case 'reindex':
-        return await handleReindex(args ?? {});
-      case 'reindex_file':
-        return await handleReindexFile(args ?? {});
-      case 'get_file_tree':
-        return await handleGetFileTree(args ?? {});
-      case 'get_file_outline':
-        return await handleGetFileOutline(args ?? {});
-      case 'get_file_folded':
-        return await handleGetFileFolded(args ?? {});
-      case 'session_briefing':
-        return await handleSessionBriefing(args ?? {});
-      case 'detect_significant_changes':
-        return await handleDetectSignificantChanges(args ?? {});
-      case 'get_symbol':
-        return await handleGetSymbol(args ?? {});
-      case 'get_dependencies':
-        return await handleGetDependencies(args ?? {});
-      case 'get_dependents':
-        return await handleGetDependents(args ?? {});
-      case 'get_blast_radius':
-        return await handleGetBlastRadius(args ?? {});
-      case 'usage_stats':
-        return await handleUsageStats(args ?? {});
-      case 'usage_dashboard':
-        return await handleUsageDashboard(args ?? {});
-      case 'usage_anomalies':
-        return await handleUsageAnomalies(args ?? {});
-      case 'db_snapshot':
-        return await handleDbSnapshot(args ?? {});
-      case 'db_schema':
-        return await handleDbSchema(args ?? {});
-      case 'db_search':
-        return await handleDbSearch(args ?? {});
-      case 'graph_view':
-        return await handleGraphView(args ?? {});
-      case 'get_circular_deps':
-        return await handleGetCircularDeps(args ?? {});
-      case 'get_dead_code':
-        return await handleGetDeadCode(args ?? {});
-      case 'get_topological_order':
-        return await handleGetTopologicalOrder(args ?? {});
-      case 'simulate_move':
-        return await handleSimulateMove(args ?? {});
-      case 'get_most_coupled':
-        return await handleGetMostCoupled(args ?? {});
-      case 'project_health':
-        return await handleProjectHealth(args ?? {});
-      case 'usage_breakdown':
-        return await handleUsageBreakdown(args ?? {});
-      case 'graph_export':
-        return await handleGraphExport(args ?? {});
-      case 'get_boundary_violations':
-        return await handleGetBoundaryViolations(args ?? {});
-      case 'find_doc_references':
-        return await handleFindDocReferences(args ?? {});
-      default:
-        throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
-    }
+    return await instrumentToolCall(projectRoot, name, safeArgs, () => dispatchTool(name, safeArgs));
   } catch (error: any) {
     if (error instanceof McpError) throw error;
     console.error(`[Stellaris] Tool error (${name}):`, error);
