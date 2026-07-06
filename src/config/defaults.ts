@@ -1,15 +1,29 @@
+// Scan the whole project root by default. Extension filtering (SUPPORTED_EXTENSIONS),
+// DEFAULT_EXCLUDE and .gitignore do the narrowing. This covers projects whose code
+// lives at the root (PHP/WordPress plugins, small TS/JS repos with no src/ dir) —
+// not just the src/-convention layouts previously hardcoded here.
 export const DEFAULT_INCLUDE = [
-  'src/**',
-  'packages/**',
-  'supabase/**',
-  'docs/**',
-  'apps/**',
-  'cerebro-batch/src/**',
+  '**',
 ];
 
 export const DEFAULT_EXCLUDE = [
   'node_modules/**',
+  '**/node_modules/**',
   'dist/**',
+  '**/dist/**',
+  'build/**',
+  '**/build/**',
+  'target/**',
+  '**/target/**',
+  '.next/**',
+  '**/.next/**',
+  '.nuxt/**',
+  'out/**',
+  'coverage/**',
+  '**/coverage/**',
+  // PHP / other ecosystems' dependency dirs
+  'vendor/**',
+  '**/vendor/**',
   '.git/**',
   '.vectors/**',
   '**/*.test.ts',
@@ -24,6 +38,7 @@ export const DEFAULT_EXCLUDE = [
   '**/package-lock.json',
   '**/yarn.lock',
   '**/pnpm-lock.yaml',
+  '**/composer.lock',
   // Security: never index sensitive files
   '**/.env*',
   '**/secrets.*',

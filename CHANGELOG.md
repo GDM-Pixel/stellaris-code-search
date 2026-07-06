@@ -1,5 +1,43 @@
 # Changelog
 
+## [4.6.1] - 2026-06-11
+
+### Fixed — Projets sans dossier `src/` : 0 fichier de code indexé (PHP/WordPress notamment)
+
+Bug critique de découverte de fichiers. `DEFAULT_INCLUDE` valait `['src/**', 'packages/**', 'supabase/**', 'docs/**', 'apps/**', 'cerebro-batch/src/**']` — le scan ne regardait **jamais la racine du projet**. Conséquence : tout projet dont le code vit à la racine (plugin WordPress avec `my-plugin.php` + `includes/*.php` + `admin/*.php`, ou petit repo TS/JS sans dossier `src/`) était indexé avec **0 fichier de code** → `NO_GRAPH`, `search_code` vide, tous les outils de graphe inopérants. Le parser PHP (tree-sitter-php) fonctionnait pourtant déjà — le problème était en amont, dans le scanner.
+
+Correctifs :
+
+1. **`src/config/defaults.ts`** — `DEFAULT_INCLUDE = ['**']` : scan de toute la racine par défaut. Le filtrage par extension (`SUPPORTED_EXTENSIONS`), `DEFAULT_EXCLUDE` et `.gitignore` font le tri. Couvre désormais les layouts non-`src/` sans configuration manuelle.
+2. **`DEFAULT_EXCLUDE` durci** — ajout des dossiers de dépendances/build qui n'étaient pas exclus et auraient explosé le nombre de fichiers sur un scan racine : `vendor/**` (Composer/PHP), `build/**`, `target/**` (Rust/Java), `.next/**`, `.nuxt/**`, `out/**`, `coverage/**`, + variantes `**/…/**` pour les sous-dossiers, + `composer.lock`.
+3. **`src/indexer/scanner.ts`** — gestion explicite du pattern racine (`**`, `**/*`, `.`) : converti directement en glob d'extensions au lieu de produire un `**/**/*{ext}` bancal.
+
+Validé : sur une fixture plugin PHP (`test/fixtures/php-plugin/`), avant = 1 fichier (0 code), après = 3 fichiers PHP indexés (racine + `includes/` + `admin/`), `vendor/` correctement exclu. Non-régression vérifiée sur Stellaris lui-même (projet `src/`-convention) : les 78 fichiers `src/` toujours trouvés, aucune fuite `node_modules`/`.vectors`/`dist`.
+
+### Added
+
+- **`test/scanner.test.ts`** — test de régression du scanner sur layout PHP racine + exclusion `vendor/`. Ajouté à `npm test`.
+
+### Après mise à jour
+
+Relancer un reindex (`reindex` avec `force=true` recommandé) sur les projets précédemment vides pour reconstruire l'index et le graphe. Pour exclure des dossiers spécifiques désormais scannés (ex. `test/fixtures/`), utiliser `.vectorignore` ou `.gitignore`.
+
+## [4.6.0] - 2026-06-11
+
+### Added — Instrumentation d'usage des outils (préparation à l'optimisation tokens)
+
+Avant de couper dans les descriptions ou les sorties d'outils, on mesure ce que ça coûte vraiment. Cette release ajoute un logger non-intrusif qui capture la taille et la durée de chaque appel d'outil, pour décider quels gains valent l'effort sur des données réelles plutôt que sur intuition.
+
+- **`src/instrumentation/usageLogger.ts`** — wrapper `instrumentToolCall(projectRoot, name, args, fn)` autour du dispatch dans `src/index.ts`. Capture : timestamp ISO, nom d'outil, bytes de sortie, durée ms, args sanitisés (strings tronqués à 30 chars, arrays/objets remplacés par leurs métadonnées), succès/erreur. Écriture synchrone bloquante minimale (~1-5ms) dans `.vectors/tool-usage.jsonl` pour garantir l'ordre et la présence des logs. Désactivable via `STELLARIS_USAGE_LOG=false`.
+- **`src/instrumentation/report.ts`** — script `npm run usage-report` : lit le JSONL, sort un tableau trié par tokens cumulés (estimation 4 chars/token), avec calls/total/avg/max par outil, top 10 des appels les plus lourds, et fenêtre temporelle des données.
+- Toujours actif par défaut. Logs locaux uniquement, jamais transmis. Le fichier est gitignored via `.vectors/`.
+
+### Notes d'implémentation
+
+- Le dispatch des 30 outils a été extrait du `CallToolRequestSchema` handler dans une fonction `dispatchTool(name, args)` pour pouvoir wrapper proprement. API MCP publique inchangée. 0 breaking change.
+- Le wrapper utilise un `try/finally` : le log est toujours écrit, même en cas d'exception. Une erreur d'écriture du log ne casse jamais l'appel d'outil (console.error + continue).
+- Estimation tokens : heuristique 4 chars/token, marge ±20%. Suffisant pour identifier les hotspots, pas pour facturer.
+
 ## [4.5.0] - 2026-05-16
 
 ### Fixed — Résolution des alias d'import (graphe de dépendances)

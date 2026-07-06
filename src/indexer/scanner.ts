@@ -81,6 +81,8 @@ export async function scanFiles(
 
   // Use fast-glob to find files matching include patterns
   const patterns = config.include.map((p) => {
+    // Whole-project root: scan everything, extension glob does the filtering
+    if (p === '**' || p === '**/*' || p === '.') return extGlob;
     // If pattern already has extension, use as-is; otherwise append ext glob
     if (p.includes('*') && (p.includes('.ts') || p.includes('.md'))) return p;
     // Ensure pattern ends with /**
