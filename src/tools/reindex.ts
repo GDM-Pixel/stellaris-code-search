@@ -1,4 +1,5 @@
 import { findProjectRoot, scanFiles } from '../indexer/scanner.js';
+import { resolveProjectRoot } from '../config/projectRoot.js';
 import { loadConfig } from '../config/loader.js';
 import { findChangedFiles, loadMetaIndex, saveMetaIndex, computeFileHash, getStoredIndexConfig, saveIndexConfig } from '../indexer/hasher.js';
 import { chunkFile, extractFileImports } from '../indexer/chunker.js';
@@ -365,7 +366,7 @@ export async function handleReindex(args: Record<string, unknown>) {
   const path = args.path as string | undefined;
   const enableAutoIndex = args.enable_auto_index as boolean | undefined;
   const force = (args.force as boolean | undefined) ?? false;
-  const projectRoot = path ?? findProjectRoot(process.cwd());
+  const projectRoot = resolveProjectRoot(process.cwd(), path);
 
   // Handle auto_index toggle
   if (enableAutoIndex !== undefined) {

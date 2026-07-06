@@ -8,6 +8,7 @@
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { findProjectRoot } from '../indexer/scanner.js';
+import { noGraphError } from '../config/projectRoot.js';
 import { getAllEdges, hasGraph } from '../graph/store.js';
 import { loadMetaIndex } from '../indexer/hasher.js';
 import { detectCycles } from '../graph/cycles.js';
@@ -161,10 +162,7 @@ export async function handleProjectHealth(_args: Record<string, unknown>) {
     return {
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({
-          error: 'NO_GRAPH',
-          message: 'No dependency graph found. Please run reindex first.',
-        }, null, 2),
+        text: JSON.stringify(noGraphError(projectRoot), null, 2),
       }],
       isError: true,
     };

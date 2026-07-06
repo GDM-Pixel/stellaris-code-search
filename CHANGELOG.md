@@ -1,5 +1,32 @@
 # Changelog
 
+## [4.8.0] - 2026-07-06
+
+### Fixed — `NO_GRAPH` sur projets imbriqués : détection du project root cohérente
+
+Sur un projet imbriqué (plugin WordPress `aaia-chat-WP/aaia-chat/` où le `.git` est sur le plugin mais le MCP est déclaré/lancé depuis le parent), tous les outils de graphe renvoyaient `NO_GRAPH` alors que `graph.db` existait et était peuplé. Deux bugs combinés :
+
+1. **Incohérence de résolution du root.** `handleReindex` acceptait un paramètre `path` (écrivait l'index où on lui disait), mais les ~28 autres outils utilisaient `findProjectRoot(process.cwd())` sans paramètre. Indexer avec un `path` explicite rendait le graphe illisible par les autres outils : écriture à un endroit, lecture à un autre.
+2. **`findProjectRoot` ne trouvait pas un projet situé sous le cwd.** Elle remontait vers les parents jusqu'à un `.git/`, sinon retombait sur le cwd. Démarré dans un parent sans marqueur, elle s'ancrait sur le mauvais dossier.
+
+Correctifs :
+
+- **Nouveau `src/config/projectRoot.ts`** — source unique de vérité :
+  - `resolveProjectRoot(startDir, explicitPath?)` : cascade déterministe — (1) `explicitPath`, (2) `.vectors/` **indexé** présent à `startDir`, (3) marqueur projet le plus proche en remontant (`.git`, `composer.json`, `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`), (4) `startDir`. Pas de devinette en sous-dossiers.
+  - `detectNestedProjects(startDir)` : liste les sous-projets de profondeur 1 **uniquement** si `startDir` n'est ni indexé ni un projet — pour signaler l'ambiguïté à l'agent, jamais pour choisir un root.
+  - `noGraphError(projectRoot)` : payload `NO_GRAPH` enrichi (`nested_projects` + message actionnable) quand des sous-projets sont détectés.
+- **`findProjectRoot`** déplacée dans `projectRoot.ts` (délègue à `resolveProjectRoot`) ; `scanner.ts` la ré-exporte → les ~28 importateurs inchangés.
+- **`handleReindex`** : `resolveProjectRoot(cwd, path)` — même fonction que les outils de lecture → cohérence garantie.
+- **11 sites `NO_GRAPH`** migrés vers `noGraphError(projectRoot)`.
+- **`hasVectors` durci** : un `.vectors/` ne compte comme index que s'il contient `meta.json` ou `graph.db` (évite qu'un `.vectors/` parasite ancre le root au mauvais endroit).
+- **usageLogger** : n'écrit plus que si `.vectors/` existe déjà — ne le crée jamais (sinon il fabriquait un faux project root).
+
+Cas `aaia-chat` : depuis le parent, `NO_GRAPH` renvoie désormais `nested_projects: ["aaia-chat"]` + un message disant de relancer reindex avec le bon `path`. L'agent Claude peut agir sans intervention manuelle. Design : `docs/superpowers/specs/2026-07-06-project-root-detection-design.md`.
+
+### Added
+
+- **`test/project-root.test.ts`** (9 assertions) : cascade, `.vectors/` vide ignoré, détection de sous-projets, enrichissement `NO_GRAPH`. Ajouté à `npm test`.
+
 ## [4.7.0] - 2026-07-06
 
 ### Added — Graphe de dépendances pour PHP (require/include)

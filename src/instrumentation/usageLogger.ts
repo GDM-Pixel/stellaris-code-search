@@ -6,7 +6,7 @@
  * Disable with STELLARIS_USAGE_LOG=false.
  */
 
-import { appendFileSync, mkdirSync, existsSync } from 'node:fs';
+import { appendFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 
 const MAX_STRING_LEN = 30;
@@ -69,11 +69,14 @@ export function logToolCall(
 ): void {
   if (isDisabled()) return;
 
-  const path = logPath(projectRoot);
+  const dir = dirname(logPath(projectRoot));
+  // Only log inside a project that has already been indexed. Never create a
+  // .vectors/ dir ourselves — a stray .vectors/ (logger-only) would leak into
+  // resolveProjectRoot() and anchor the root on the wrong (parent) directory.
+  if (!existsSync(dir)) return;
+
   try {
-    const dir = dirname(path);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    appendFileSync(path, JSON.stringify(record) + '\n', 'utf8');
+    appendFileSync(logPath(projectRoot), JSON.stringify(record) + '\n', 'utf8');
   } catch (err: any) {
     // Never break the tool call on a logging failure.
     console.error('[Stellaris usage] log write failed:', err.message);

@@ -6,6 +6,10 @@ import ignore, { type Ignore } from 'ignore';
 import { SUPPORTED_EXTENSIONS } from '../config/defaults.js';
 import type { ResolvedConfig } from '../config/loader.js';
 
+// findProjectRoot's canonical implementation now lives in config/projectRoot.ts.
+// Re-exported here so the ~28 existing `from '../indexer/scanner.js'` imports keep working.
+export { findProjectRoot } from '../config/projectRoot.js';
+
 export interface FileInfo {
   /** Absolute path */
   absolutePath: string;
@@ -15,21 +19,6 @@ export interface FileInfo {
   extension: string;
   /** 'code' or 'docs' */
   category: 'code' | 'docs';
-}
-
-/**
- * Find project root by walking up to find .git/
- */
-export function findProjectRoot(startPath: string): string {
-  let dir = resolve(startPath);
-  while (dir !== resolve(dir, '..')) {
-    if (existsSync(join(dir, '.git'))) {
-      return dir;
-    }
-    dir = resolve(dir, '..');
-  }
-  // Fallback: use startPath itself
-  return resolve(startPath);
 }
 
 /**

@@ -6,6 +6,7 @@
  */
 
 import { findProjectRoot } from '../indexer/scanner.js';
+import { noGraphError } from '../config/projectRoot.js';
 import { hasGraph, findDocLinksForSymbol, findDocLinksForFile, getDocLinksStats } from '../graph/store.js';
 import { truncateIfOversized } from '../utils/responseTier.js';
 
@@ -35,10 +36,7 @@ export async function handleFindDocReferences(args: Record<string, unknown>) {
     return {
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({
-          error: 'NO_GRAPH',
-          message: 'No graph database found. Run reindex first.',
-        }, null, 2),
+        text: JSON.stringify(noGraphError(projectRoot), null, 2),
       }],
       isError: true,
     };

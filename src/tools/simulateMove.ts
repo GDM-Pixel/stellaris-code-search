@@ -6,6 +6,7 @@
 
 import { posix } from 'node:path';
 import { findProjectRoot } from '../indexer/scanner.js';
+import { noGraphError } from '../config/projectRoot.js';
 import { getAllEdges, hasGraph } from '../graph/store.js';
 
 function toForwardSlash(p: string): string {
@@ -50,10 +51,7 @@ export async function handleSimulateMove(args: Record<string, unknown>) {
     return {
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({
-          error: 'NO_GRAPH',
-          message: 'No dependency graph found. Please run reindex first.',
-        }, null, 2),
+        text: JSON.stringify(noGraphError(projectRoot), null, 2),
       }],
       isError: true,
     };

@@ -1,6 +1,6 @@
 {
   "name": "stellaris-mcp",
-  "version": "4.7.0",
+  "version": "4.8.0",
   "description": "MCP server for semantic code search + AST symbol exploration + dependency graph analysis — supports TS, JS, Python, Go, Rust, PHP, HTML, CSS, Astro, Vue, Svelte, SCSS, SQL, and more",
   "license": "MIT",
   "repository": {
@@ -26,7 +26,7 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "watch": "tsc --watch",
-    "test": "tsx test/resolver.test.ts && tsx test/graph-integration.test.ts && tsx test/scanner.test.ts && tsx test/php-graph.test.ts",
+    "test": "tsx test/resolver.test.ts && tsx test/graph-integration.test.ts && tsx test/scanner.test.ts && tsx test/php-graph.test.ts && tsx test/project-root.test.ts",
     "postinstall": "npm rebuild better-sqlite3 --silent || true",
     "doctor": "npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 OK pour Node', process.version)\"",
     "usage-report": "tsx src/instrumentation/report.ts"

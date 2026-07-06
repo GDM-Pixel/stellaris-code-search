@@ -5,6 +5,7 @@
  */
 
 import { findProjectRoot } from '../indexer/scanner.js';
+import { noGraphError } from '../config/projectRoot.js';
 import { hasGraph, getAllBoundaryViolations } from '../graph/store.js';
 import { loadBoundaries } from '../graph/boundaries.js';
 import { truncateIfOversized } from '../utils/responseTier.js';
@@ -16,10 +17,7 @@ export async function handleGetBoundaryViolations(_args: Record<string, unknown>
     return {
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({
-          error: 'NO_GRAPH',
-          message: 'No dependency graph found. Run reindex first.',
-        }, null, 2),
+        text: JSON.stringify(noGraphError(projectRoot), null, 2),
       }],
       isError: true,
     };
