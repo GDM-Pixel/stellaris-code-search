@@ -29,8 +29,9 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "watch": "tsc --watch",
-    "test": "tsx test/resolver.test.ts && tsx test/graph-integration.test.ts && tsx test/scanner.test.ts && tsx test/php-graph.test.ts && tsx test/project-root.test.ts && tsx test/stellarisrc.test.ts",
-    "postinstall": "node scripts/ensure-abi.mjs",
+    "test": "tsx test/resolver.test.ts && tsx test/graph-integration.test.ts && tsx test/scanner.test.ts && tsx test/php-graph.test.ts && tsx test/project-root.test.ts && tsx test/stellarisrc.test.ts && tsx test/extract-hook-path.test.ts",
+    "postinstall": "node scripts/ensure-abi.mjs && node scripts/install-grok-hook.mjs",
+    "install-hooks": "node scripts/install-grok-hook.mjs",
     "doctor": "node -e \"require('better-sqlite3'); console.log('better-sqlite3 OK pour Node', process.version, 'ABI', process.versions.modules)\"",
     "usage-report": "tsx src/instrumentation/report.ts"
   },

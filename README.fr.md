@@ -133,6 +133,33 @@ Les etapes 2, 4, 5 et tous les outils graphe ne consomment **aucun token d'API**
 
 Apres le premier `reindex`, un fichier `.stellarisrc` est cree a la racine du projet avec `auto_index=true`. Les demarrages suivants lanceront automatiquement l'indexation incrementale.
 
+`auto_index` ne tourne qu'au **demarrage du MCP**. Pendant une session, les fichiers crees/edites sont re-indexes par un hook `PostToolUse`.
+
+**Grok (automatique).** `npm install` pose `~/.grok/hooks/stellaris-reindex.json` si `~/.grok` existe et que Node 22 (`nova-node`) est disponible. Relancer :
+
+```bash
+npm run install-hooks
+```
+
+Puis une nouvelle session Grok (`/hooks-list` pour verifier `stellaris-reindex`). Le hook doit tourner sous Node 22, pas le Node 26 du PATH.
+
+**Claude Code (manuel).** Ajouter dans `~/.claude/settings.json` (adapter le chemin) :
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [{
+      "matcher": "Write|Edit",
+      "hooks": [{
+        "type": "command",
+        "command": "node \"/chemin/vers/stellaris-code-search/scripts/reindex-file.mjs\" \"$file_path\" 2>&1 || true",
+        "timeout": 30
+      }]
+    }]
+  }
+}
+```
+
 ## Installation
 
 ```bash

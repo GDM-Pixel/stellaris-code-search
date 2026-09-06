@@ -24,7 +24,7 @@ Search your codebase with natural language, browse file structures, inspect symb
 - **Usage dashboard** — tracks Claude Code token consumption and estimated API cost in real time, with cache analytics and task category breakdown
 - **Token breakdown** — see where tokens go: by task category (coding, debugging, feature…), MCP server, and core tool — inspired by [codeburn](https://github.com/AgentSeal/codeburn)
 - **Index integrity checker** — automatically purges orphaned chunks and stale meta entries at every startup
-- **Auto-reindex hook** — keeps the index fresh automatically after every Write/Edit
+- **Auto-reindex hook** — Grok installs it on `npm install`; Claude Code needs a `PostToolUse` snippet (see below)
 - **AST exploration**: file tree, symbol outlines, source extraction — zero API calls
 - **Context-aware**: imports, sibling symbols, and TODO/FIXME warnings included automatically
 - **Incremental indexing**: only changed files are re-embedded
@@ -157,9 +157,19 @@ Steps 2, 4, 5, and all graph tools consume **zero API tokens**.
 
 After the first `reindex`, a `.stellarisrc` file is created in the project root with `auto_index=true`. Subsequent server startups will automatically run incremental indexing (only changed files).
 
-### Auto-reindex hook
+### Auto-reindex hook (Grok + Claude Code)
 
-To keep the index fresh in real time during Claude Code sessions, add this to your `~/.claude/settings.json`:
+`auto_index=true` only runs at **MCP startup**. While a session is open, new/edited files are indexed by a `PostToolUse` hook.
+
+**Grok (automatic).** `npm install` installs `~/.grok/hooks/stellaris-reindex.json` when `~/.grok` exists and Node 22 (`nova-node`) is available. It fires after `write` / `search_replace` (and Claude aliases `Write` / `Edit`), reads the path from hook stdin, and reindexes that file. Re-run:
+
+```bash
+npm run install-hooks
+```
+
+Then start a new Grok session (or `/hooks-list` to confirm `stellaris-reindex`). The hook must run under Node 22 — never PATH Node 26 — because it loads `better-sqlite3`.
+
+**Claude Code (manual).** Add this to `~/.claude/settings.json` (replace the path):
 
 ```json
 {
@@ -175,8 +185,6 @@ To keep the index fresh in real time during Claude Code sessions, add this to yo
   }
 }
 ```
-
-Replace `/path/to/stellaris-code-search` with the actual path to your Stellaris installation.
 
 ## Installation
 

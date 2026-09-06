@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added — Hook Grok `PostToolUse` pour reindex à chaud
+
+`auto_index` ne couvre que le démarrage du MCP. Les Write/Edit en session laissaient l'index incomplet.
+
+- `scripts/reindex-file.mjs` lit le JSON stdin Grok (`toolInput.file_path`) en plus de l'argv Claude.
+- `scripts/install-grok-hook.mjs` pose `~/.grok/hooks/stellaris-reindex.json` (matcher `write|search_replace|Write|Edit`, timeout 30s, runtime Node 22 / nova-node).
+- `npm install` / `npm run install-hooks` l'installent si `~/.grok` existe.
+
 ## [4.8.0] - 2026-07-06
 
 ### Fixed — `NO_GRAPH` sur projets imbriqués : détection du project root cohérente
