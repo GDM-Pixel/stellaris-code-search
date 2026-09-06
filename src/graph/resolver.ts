@@ -69,7 +69,7 @@ export function resolveImports(
   const aliases = getAliasesForDir(state, sourceDir, projectRoot);
 
   return rawImports
-    .filter(imp => isResolvableImport(imp, aliases))
+    .filter(imp => isResolvableImport(imp, aliases, sourceFilePath))
     .map(raw => ({
       raw,
       resolved: resolveImport(raw, sourceFilePath, projectRoot, aliases),
@@ -88,13 +88,26 @@ function getProjectState(projectRoot: string): ProjectResolverState {
   return state;
 }
 
+/** QML local file import: `import "Effort.js" as Effort` (no ./). */
+const QML_FILE_IMPORT = /\.(js|mjs|cjs|ts|tsx|jsx|qml)$/i;
+
+function isQmlLocalFileImport(importStr: string): boolean {
+  if (importStr.includes('://') || importStr.startsWith('qrc:')) return false;
+  return QML_FILE_IMPORT.test(importStr);
+}
+
 /**
  * Check if an import is resolvable (skip node builtins; keep anything that
  * looks relative, root-absolute, or matches a known alias prefix).
  */
-function isResolvableImport(importStr: string, aliases: AliasEntry[]): boolean {
+function isResolvableImport(
+  importStr: string,
+  aliases: AliasEntry[],
+  sourceFilePath: string,
+): boolean {
   if (importStr.startsWith('node:')) return false;
   if (importStr.startsWith('.') || importStr.startsWith('/')) return true;
+  if (sourceFilePath.endsWith('.qml') && isQmlLocalFileImport(importStr)) return true;
   // Bare specifier: only resolvable if it matches an alias prefix
   return aliases.some(a => matchesAliasPrefix(importStr, a.prefix));
 }
@@ -114,8 +127,11 @@ function resolveImport(
   projectRoot: string,
   aliases: AliasEntry[],
 ): string | null {
-  // 1. Relative imports
-  if (importStr.startsWith('.')) {
+  // 1. Relative imports — including QML `import "Foo.js"` (no ./)
+  if (
+    importStr.startsWith('.')
+    || (sourceFilePath.endsWith('.qml') && isQmlLocalFileImport(importStr))
+  ) {
     const sourceDir = dirname(join(projectRoot, sourceFilePath));
     const targetAbs = resolve(sourceDir, importStr);
     return tryResolveFile(targetAbs, projectRoot);

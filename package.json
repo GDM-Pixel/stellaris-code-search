@@ -1,7 +1,7 @@
 {
   "name": "stellaris-mcp",
   "version": "4.8.0",
-  "description": "MCP server for semantic code search + AST symbol exploration + dependency graph analysis — supports TS, JS, Python, Go, Rust, PHP, HTML, CSS, Astro, Vue, Svelte, SCSS, SQL, and more",
+  "description": "MCP server for semantic code search + AST symbol exploration + dependency graph analysis — supports TS, JS, Python, Go, Rust, PHP, HTML, CSS, Astro, Vue, Svelte, SCSS, SQL, QML, shell, and more",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -17,6 +17,9 @@
     "lancedb"
   ],
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "main": "dist/index.js",
   "bin": {
     "stellaris-mcp": "dist/index.js"
@@ -26,9 +29,9 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "watch": "tsc --watch",
-    "test": "tsx test/resolver.test.ts && tsx test/graph-integration.test.ts && tsx test/scanner.test.ts && tsx test/php-graph.test.ts && tsx test/project-root.test.ts",
-    "postinstall": "npm rebuild better-sqlite3 --silent || true",
-    "doctor": "npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 OK pour Node', process.version)\"",
+    "test": "tsx test/resolver.test.ts && tsx test/graph-integration.test.ts && tsx test/scanner.test.ts && tsx test/php-graph.test.ts && tsx test/project-root.test.ts && tsx test/stellarisrc.test.ts",
+    "postinstall": "node scripts/ensure-abi.mjs",
+    "doctor": "node -e \"require('better-sqlite3'); console.log('better-sqlite3 OK pour Node', process.version, 'ABI', process.versions.modules)\"",
     "usage-report": "tsx src/instrumentation/report.ts"
   },
   "dependencies": {

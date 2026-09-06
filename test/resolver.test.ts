@@ -151,6 +151,23 @@ async function main() {
     assert.equal(m.get('~/widgets/Button'), 'src/widgets/Button.ts');
   });
 
+  // QML: import "Effort.js" as Effort (no ./) must resolve next to the .qml file.
+  const qmlproj = join(FIXTURES, 'qmlproj');
+
+  await test('[qml] quoted file import without ./ is extracted', () => {
+    const content = readFileSync(join(qmlproj, 'plugin/GrokHost.qml'), 'utf-8');
+    const raw = extractFileImports(content, '.qml');
+    assert.ok(raw.includes('Effort.js'), `expected Effort.js, got: ${JSON.stringify(raw)}`);
+    assert.ok(raw.includes('IconBtn.qml'), `expected IconBtn.qml, got: ${JSON.stringify(raw)}`);
+    assert.ok(!raw.includes('QtQuick'), 'Qt module imports must not be treated as files');
+  });
+
+  await test('[qml] import "Effort.js" resolves to sibling without alias', () => {
+    const m = resolvedMap(qmlproj, 'plugin/GrokHost.qml');
+    assert.equal(m.get('Effort.js'), 'plugin/Effort.js');
+    assert.equal(m.get('IconBtn.qml'), 'plugin/IconBtn.qml');
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);
 }

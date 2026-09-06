@@ -61,6 +61,12 @@ const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameExtractor: extractTSName,
     chunkClassifier: classifyTS,
   },
+  '.mjs': {
+    language: TSLanguage,
+    topLevelTypes: ['export_statement', 'function_declaration', 'class_declaration', 'lexical_declaration'],
+    nameExtractor: extractTSName,
+    chunkClassifier: classifyTS,
+  },
   '.py': {
     language: PythonLanguage,
     topLevelTypes: ['function_definition', 'class_definition', 'decorated_definition'],

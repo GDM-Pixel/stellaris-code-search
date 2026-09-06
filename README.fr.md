@@ -22,7 +22,7 @@ Combine la puissance des **embeddings vectoriels** (OpenAI + LanceDB) pour la re
 - **Indexation incrementale** : seuls les fichiers modifies sont re-indexes
 - **Securise par defaut** : aucune auto-indexation tant que vous n'avez pas lance `reindex` une premiere fois
 - **Auto-indexation** aux demarrages suivants (opt-in via `.stellarisrc`)
-- **23 extensions de fichiers** : TS, JS, Python, Go, Rust, PHP, HTML, CSS, Astro, Vue, Svelte, SCSS, JSON, YAML, SQL, GraphQL, Prisma, TOML, etc.
+- **28 extensions de fichiers** : TS, JS, Python, Go, Rust, PHP, HTML, CSS, Astro, Vue, Svelte, SCSS, JSON, YAML, SQL, GraphQL, Prisma, TOML, QML, shell, etc.
 - **Degradation gracieuse** : fonctionne sans `OPENAI_API_KEY` (les outils AST restent disponibles)
 
 ## Benchmark : Stellaris vs Grep/Glob

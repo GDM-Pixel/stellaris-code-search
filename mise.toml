@@ -1,0 +1,5 @@
+# Grok launches this MCP with nova-node (Node 22, ABI 127).
+# Global mise may be Node 26 (ABI 147). Stay on 22 in this repo
+# so `npm install` / `npm rebuild` never retarget better-sqlite3.
+[tools]
+node = "22"

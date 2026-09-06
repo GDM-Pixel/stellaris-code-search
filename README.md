@@ -30,7 +30,7 @@ Search your codebase with natural language, browse file structures, inspect symb
 - **Incremental indexing**: only changed files are re-embedded
 - **Safe by default**: no auto-indexing until you explicitly run `reindex` for the first time
 - **Auto-indexing** on subsequent startups (opt-in via `.stellarisrc`)
-- **25 file extensions**: TS, JS, Python, Go, Rust, PHP, Java, Ruby, HTML, CSS, Astro, Vue, Svelte, SCSS, JSON, YAML, SQL, GraphQL, Prisma, TOML, and more
+- **28 file extensions**: TS, JS, Python, Go, Rust, PHP, Java, Ruby, HTML, CSS, Astro, Vue, Svelte, SCSS, JSON, YAML, SQL, GraphQL, Prisma, TOML, QML, shell, and more
 - **Graceful degradation**: works without any API key (AST tools still available)
 
 ## Benchmark: Stellaris vs Grep/Glob
@@ -185,6 +185,14 @@ git clone https://github.com/GDM-Pixel/stellaris-code-search.git
 cd stellaris-code-search
 npm install
 npm run build
+```
+
+**Node 22 only (ABI 127).** Grok / Nova launch this server with `nova-node`, not PATH `node`. This repo has a `mise.toml` pin. Do not `npm rebuild better-sqlite3` under Node 24/26 — it breaks the MCP for every project until you reinstall with Node 22.
+
+```bash
+# if PATH node is not 22:
+/home/charles/.local/bin/nova-node "$(command -v npm)" install
+npm run doctor   # must print ABI 127
 ```
 
 ## Configuration
